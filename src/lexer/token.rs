@@ -6,6 +6,9 @@ pub enum Token {
     Illegal,
     Eof,
     Equal,
+    NotEqual,
+    Not,
+    EqualEqual,
     Plus,
     Comma,
     Semicolon,
@@ -15,4 +18,6 @@ pub enum Token {
     RSquirly,
     Function,
     Let,
+    True,
+    False,
 }

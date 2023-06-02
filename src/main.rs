@@ -1,5 +1,7 @@
 mod lexer;
+use lexer::lexer::Lexer;
 
 fn main() {
-    println!("Hello, world!");
+    let lexer = Lexer::new("".to_owned());
+    println!("{:?}", lexer.lex());
 }
