@@ -1,4 +1,5 @@
 mod lexer;
+mod parser;
 use lexer::lexer::Lexer;
 
 fn main() {

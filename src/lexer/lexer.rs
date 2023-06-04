@@ -98,6 +98,7 @@ impl Lexer {
 
                 'a'..='z' | 'A'..='Z' | '_' => {
                     let mut ident = String::new();
+
                     while let Some(c) = chars.next() {
                         if !c.is_ascii_alphabetic() {
                             break;
