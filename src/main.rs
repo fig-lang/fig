@@ -1,5 +1,7 @@
+mod codegen;
 mod lexer;
 mod parser;
+
 use lexer::lexer::Lexer;
 use parser::ast::Program;
 use parser::parser::{Parse, Parser, Precedence};
