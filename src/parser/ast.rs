@@ -1,12 +1,13 @@
 use super::parser::{PResult, Parse, Parser, ParserError, Precedence};
 use crate::lexer::token::Token;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
     Let(LetStatement),
     Return(ReturnStatement),
     Expression(Expression),
     Block(BlockStatement),
+    Function(FunctionStatement),
 }
 
 impl<'a> Parse<'a> for Statement {
@@ -15,6 +16,9 @@ impl<'a> Parse<'a> for Statement {
             Token::Let => Ok(Self::Let(LetStatement::parse(parser, precedence)?)),
             Token::Return => Ok(Self::Return(ReturnStatement::parse(parser, precedence)?)),
             Token::LSquirly => Ok(Self::Block(BlockStatement::parse(parser, precedence)?)),
+            Token::Function => Ok(Self::Function(FunctionStatement::parse(
+                parser, precedence,
+            )?)),
 
             _el => {
                 let expr = Self::Expression(Expression::parse(parser, Some(Precedence::Lowest))?);
@@ -28,9 +32,9 @@ impl<'a> Parse<'a> for Statement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockStatement {
-    pub(super) statements: Vec<Statement>,
+    pub(crate) statements: Vec<Statement>,
 }
 
 impl<'a> Parse<'a> for BlockStatement {
@@ -51,10 +55,10 @@ impl<'a> Parse<'a> for BlockStatement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LetStatement {
-    pub(super) name: Identifier,
-    pub(super) value: Expression,
+    pub(crate) name: Identifier,
+    pub(crate) value: Expression,
 }
 
 impl<'a> Parse<'a> for LetStatement {
@@ -81,7 +85,7 @@ impl<'a> Parse<'a> for LetStatement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReturnStatement {
     return_value: Expression,
 }
@@ -100,7 +104,7 @@ impl<'a> Parse<'a> for ReturnStatement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression {
     Identifier(Identifier),
     Integer(Integer),
@@ -180,7 +184,7 @@ impl<'a> Parse<'a> for Expression {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrefixExpr {
     operator: Token,
     right: Box<Expression>,
@@ -199,11 +203,11 @@ impl<'a> Parse<'a> for PrefixExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InfixExpr {
-    left: Box<Expression>,
-    operator: Token,
-    right: Box<Expression>,
+    pub(crate) left: Box<Expression>,
+    pub(crate) operator: Token,
+    pub(crate) right: Box<Expression>,
 }
 
 impl<'a> InfixExpr {
@@ -223,7 +227,7 @@ impl<'a> InfixExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IfExpr {
     condition: Box<Expression>,
     consequence: BlockStatement,
@@ -260,7 +264,32 @@ impl<'a> Parse<'a> for IfExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionStatement {
+    pub(crate) name: Identifier,
+    pub(crate) params: Vec<Identifier>,
+    pub(crate) body: BlockStatement,
+}
+
+impl<'a> Parse<'a> for FunctionStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        parser.next_token();
+
+        let name = Identifier::parse(parser, precedence.clone())?;
+
+        parser.expect_peek(Token::Lparen)?;
+
+        let params = FunctionExpr::parse_function_params(parser)?;
+
+        parser.expect_peek(Token::LSquirly)?;
+
+        let body = BlockStatement::parse(parser, precedence)?;
+
+        Ok(FunctionStatement { name, params, body })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionExpr {
     params: Vec<Identifier>,
     body: BlockStatement,
@@ -311,10 +340,10 @@ impl<'a> Parse<'a> for FunctionExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CallExpr {
-    function: Box<Expression>, // Identifier or Function
-    arguments: Vec<Expression>,
+    pub(crate) function: Box<Expression>, // Identifier or Function
+    pub(crate) arguments: Vec<Expression>,
 }
 
 impl CallExpr {
@@ -355,7 +384,7 @@ impl CallExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BooleanExpr {
     value: bool,
 }
@@ -373,9 +402,9 @@ impl<'a> Parse<'a> for BooleanExpr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Integer {
-    value: i32,
+    pub(crate) value: i32,
 }
 
 impl<'a> Parse<'a> for Integer {
@@ -390,9 +419,9 @@ impl<'a> Parse<'a> for Integer {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identifier {
-    pub(super) value: String,
+    pub(crate) value: String,
 }
 
 impl<'a> Parse<'a> for Identifier {
@@ -412,7 +441,7 @@ impl<'a> Parse<'a> for Identifier {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program {
-    pub(super) statements: Vec<Statement>,
+    pub(crate) statements: Vec<Statement>,
 }
 
 impl<'a> Parse<'a> for Program {
