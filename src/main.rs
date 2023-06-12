@@ -14,7 +14,7 @@ use crate::codegen::codegen::Generator;
 fn main() {
     let source = r#"
         fn x(y, z) {
-            1 + y * z
+            1 + o * z
         }
         "#;
 
@@ -24,7 +24,7 @@ fn main() {
 
     let mut generator = Generator::new(program);
 
-    generator.visit();
+    generator.visit().unwrap();
 
     let buf = generator.generate();
 

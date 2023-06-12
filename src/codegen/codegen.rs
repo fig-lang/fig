@@ -12,6 +12,11 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
+pub enum CompilerError {
+    NotDefined(String),
+}
+
 pub trait WasmTypes {
     type Output;
     fn types(&self) -> Self::Output
@@ -33,19 +38,21 @@ impl WasmTypes for FunctionStatement {
     }
 }
 
+type CResult<T> = Result<T, CompilerError>;
+
 pub trait Instructions<'a> {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction>
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>>
     where
         Self: Sized;
 }
 
 impl<'a> Instructions<'a> for Token {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
-            Token::Plus => vec![Instruction::I32Add],
-            Token::Minus => vec![Instruction::I32Sub],
-            Token::ForwardSlash => vec![Instruction::I32DivS],
-            Token::Asterisk => vec![Instruction::I32Mul],
+            Token::Plus => Ok(vec![Instruction::I32Add]),
+            Token::Minus => Ok(vec![Instruction::I32Sub]),
+            Token::ForwardSlash => Ok(vec![Instruction::I32DivS]),
+            Token::Asterisk => Ok(vec![Instruction::I32Mul]),
 
             _ => todo!(),
         }
@@ -53,32 +60,32 @@ impl<'a> Instructions<'a> for Token {
 }
 
 impl<'a> Instructions<'a> for InfixExpr {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
-        let left_side = self.left.generate_instructions(gen);
-        let operation = self.operator.generate_instructions(gen);
-        let right_side = self.right.generate_instructions(gen);
+        let left_side = self.left.generate_instructions(gen)?;
+        let operation = self.operator.generate_instructions(gen)?;
+        let right_side = self.right.generate_instructions(gen)?;
 
         result.extend(left_side);
         result.extend(right_side);
         result.extend(operation);
 
-        result
+        Ok(result)
     }
 }
 
 impl<'a> Instructions<'a> for Integer {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
-        vec![Instruction::I32Const(self.value)]
+    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        Ok(vec![Instruction::I32Const(self.value)])
     }
 }
 
 impl<'a> Instructions<'a> for Expression {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
-            Expression::Integer(int) => int.generate_instructions(gen),
-            Expression::Infix(infix) => infix.generate_instructions(gen),
-            Expression::Identifier(ident) => ident.generate_instructions(gen),
+            Expression::Integer(int) => Ok(int.generate_instructions(gen)?),
+            Expression::Infix(infix) => Ok(infix.generate_instructions(gen)?),
+            Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
 
             _ => todo!(),
         }
@@ -86,44 +93,47 @@ impl<'a> Instructions<'a> for Expression {
 }
 
 impl<'a> Instructions<'a> for Identifier {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         // Is it the let or function arg
         // TODO: remove unwrap
-        let param = gen
-            .function_manager
-            .current_function()
-            .unwrap()
+        let Some(func) = gen.function_manager.current_function() else {
+            return Err(CompilerError::NotDefined("Function is not defined!".to_string()));
+        };
+        let Some(param) = func
             .params
             .into_iter()
-            .find(|param| param.name == self.value)
-            .unwrap();
+            .find(|param| param.name == self.value) else {
+                return Err(
+                    CompilerError::NotDefined(format!("Variable with name {} is not defined!", self.value))
+                );
+            };
 
-        vec![Instruction::LocalGet(param.id)]
+        Ok(vec![Instruction::LocalGet(param.id)])
     }
 }
 
 impl<'a> Instructions<'a> for BlockStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         for statement in &self.statements {
-            result.extend(statement.generate_instructions(gen));
+            result.extend(statement.generate_instructions(gen)?);
         }
 
-        result
+        Ok(result)
     }
 }
 
 impl<'a> Instructions<'a> for FunctionStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
-        let mut result = self.body.generate_instructions(gen);
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result = self.body.generate_instructions(gen)?;
         result.push(Instruction::End);
 
-        result
+        Ok(result)
     }
 }
 
 impl<'a> Instructions<'a> for Statement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
             Statement::Function(func) => {
                 let types = func.types();
@@ -144,10 +154,10 @@ impl<'a> Instructions<'a> for Statement {
                 gen.function_manager
                     .new_function(type_index, func.name.value.clone(), params);
 
-                let block = func.generate_instructions(gen);
+                let block = func.generate_instructions(gen)?;
                 gen.code_manager.new_function_code(block);
 
-                vec![]
+                Ok(vec![])
             }
 
             Statement::Expression(expr) => expr.generate_instructions(gen),
@@ -158,13 +168,13 @@ impl<'a> Instructions<'a> for Statement {
 }
 
 impl<'a> Instructions<'a> for Program {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         for statement in &self.statements {
-            result.extend(statement.generate_instructions(gen));
+            result.extend(statement.generate_instructions(gen)?);
         }
 
-        result
+        Ok(result)
     }
 }
 
@@ -197,9 +207,12 @@ impl Generator {
         }
     }
 
-    pub fn visit(&mut self) {
+    pub fn visit(&mut self) -> CResult<()>{
         let ast = self.ast.clone();
-        ast.generate_instructions(self);
+
+        ast.generate_instructions(self)?;
+
+        Ok(())
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
