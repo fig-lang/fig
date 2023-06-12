@@ -392,6 +392,10 @@ impl LocalManager {
         self.locals_index += how_much;
     }
 
+    pub fn local_exists(&self, name: &String) -> bool {
+        self.locals.contains_key(name)
+    }
+
     /// Creates new local var
     ///
     /// and returns the index
