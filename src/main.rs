@@ -13,7 +13,9 @@ use crate::codegen::codegen::Generator;
 
 fn main() {
     let source = r#"
-        
+        fn x(y, z) {
+            1 + y * z
+        }
         "#;
 
     let mut lexer = Lexer::new(source.to_string());

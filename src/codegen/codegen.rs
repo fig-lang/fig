@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use wasm_encoder::{
     CodeSection, Function, FunctionSection, Instruction, Module, TypeSection, ValType,
 };
@@ -5,7 +7,8 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, Expression, FunctionStatement, InfixExpr, Integer, Program, Statement,
+        BlockStatement, Expression, FunctionStatement, Identifier, InfixExpr, Integer, Program,
+        Statement,
     },
 };
 
@@ -75,9 +78,27 @@ impl<'a> Instructions<'a> for Expression {
         match self {
             Expression::Integer(int) => int.generate_instructions(gen),
             Expression::Infix(infix) => infix.generate_instructions(gen),
+            Expression::Identifier(ident) => ident.generate_instructions(gen),
 
             _ => todo!(),
         }
+    }
+}
+
+impl<'a> Instructions<'a> for Identifier {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
+        // Is it the let or function arg
+        // TODO: remove unwrap
+        let param = gen
+            .function_manager
+            .current_function()
+            .unwrap()
+            .params
+            .into_iter()
+            .find(|param| param.name == self.value)
+            .unwrap();
+
+        vec![Instruction::LocalGet(param.id)]
     }
 }
 
@@ -105,10 +126,25 @@ impl<'a> Instructions<'a> for Statement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
         match self {
             Statement::Function(func) => {
-                let block = func.generate_instructions(gen);
                 let types = func.types();
-                let type_index = gen.type_manager.new_function_type(types.0, types.1);
-                gen.function_manager.new_function(type_index);
+                let type_index = gen.type_manager.new_function_type(types.0.clone(), types.1);
+
+                let params = types
+                    .0
+                    .into_iter()
+                    .zip(func.params.clone())
+                    .enumerate()
+                    .map(|(i, (t, param))| FunctionParam {
+                        id: i as u32,
+                        param_type: t,
+                        name: param.value,
+                    })
+                    .collect::<Vec<FunctionParam>>();
+
+                gen.function_manager
+                    .new_function(type_index, func.name.value.clone(), params);
+
+                let block = func.generate_instructions(gen);
                 gen.code_manager.new_function_code(block);
 
                 vec![]
@@ -207,9 +243,24 @@ impl TypeManager {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FunctionData {
+    params: Vec<FunctionParam>,
+    id: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionParam {
+    id: u32,
+    name: String,
+    param_type: ValType,
+}
+
 pub struct FunctionManager {
+    functions: HashMap<String, FunctionData>,
     section: FunctionSection,
     functions_index: u32,
+    current_function: Option<FunctionData>,
 }
 
 impl FunctionManager {
@@ -217,11 +268,26 @@ impl FunctionManager {
         Self {
             section: FunctionSection::new(),
             functions_index: 0,
+            functions: HashMap::new(),
+            current_function: None,
         }
     }
 
-    pub fn new_function(&mut self, type_index: u32) {
+    pub fn current_function(&self) -> Option<FunctionData> {
+        self.current_function.clone()
+    }
+
+    pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
+        let new_fn = FunctionData {
+            params,
+            id: self.functions_index,
+        };
+
+        self.functions.insert(name, new_fn.clone());
+
         self.section.function(type_index);
+
+        self.current_function = Some(new_fn);
 
         self.functions_index += 1;
     }
