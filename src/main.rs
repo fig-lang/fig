@@ -7,19 +7,13 @@ use std::io::Write;
 
 use lexer::lexer::Lexer;
 use parser::ast::Program;
-use parser::parser::{Parse, Parser, Precedence};
+use parser::parser::{Parse, Parser};
 
 use crate::codegen::codegen::Generator;
 
 fn main() {
     let source = r#"
-        fn hello(x,y) {
-            32
-        }
-
-        fn func_name() {
-            hello()
-        }
+        
         "#;
 
     let mut lexer = Lexer::new(source.to_string());
@@ -28,7 +22,7 @@ fn main() {
 
     let mut generator = Generator::new(program);
 
-    generator.visit_ast().unwrap();
+    generator.visit();
 
     let buf = generator.generate();
 

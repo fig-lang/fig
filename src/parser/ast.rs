@@ -439,7 +439,7 @@ impl<'a> Parse<'a> for Identifier {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Program {
     pub(crate) statements: Vec<Statement>,
 }

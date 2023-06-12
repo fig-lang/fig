@@ -1,4 +1,6 @@
-use wasm_encoder::{Instruction, Module, TypeSection, ValType};
+use wasm_encoder::{
+    CodeSection, Function, FunctionSection, Instruction, Module, TypeSection, ValType,
+};
 
 use crate::{
     lexer::token::Token,
@@ -20,7 +22,7 @@ impl WasmTypes for FunctionStatement {
     fn types(&self) -> Self::Output {
         let mut param_type: Vec<ValType> = vec![];
 
-        for param in self.params {
+        for _param in &self.params {
             param_type.push(ValType::I32);
         }
 
@@ -82,7 +84,7 @@ impl<'a> Instructions<'a> for Expression {
 impl<'a> Instructions<'a> for BlockStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
         let mut result: Vec<Instruction> = vec![];
-        for statement in self.statements {
+        for statement in &self.statements {
             result.extend(statement.generate_instructions(gen));
         }
 
@@ -102,7 +104,18 @@ impl<'a> Instructions<'a> for FunctionStatement {
 impl<'a> Instructions<'a> for Statement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
         match self {
-            Statement::Function(func) => func.generate_instructions(gen),
+            Statement::Function(func) => {
+                let block = func.generate_instructions(gen);
+                let types = func.types();
+                let type_index = gen.type_manager.new_function_type(types.0, types.1);
+                gen.function_manager.new_function(type_index);
+                gen.code_manager.new_function_code(block);
+
+                vec![]
+            }
+
+            Statement::Expression(expr) => expr.generate_instructions(gen),
+
             _ => todo!(),
         }
     }
@@ -111,7 +124,7 @@ impl<'a> Instructions<'a> for Statement {
 impl<'a> Instructions<'a> for Program {
     fn generate_instructions(&self, gen: &'a mut Generator) -> Vec<Instruction> {
         let mut result: Vec<Instruction> = vec![];
-        for statement in self.statements {
+        for statement in &self.statements {
             result.extend(statement.generate_instructions(gen));
         }
 
@@ -128,6 +141,12 @@ pub struct Generator {
 
     /// Manages types like function types
     type_manager: TypeManager,
+
+    /// Manages functions
+    function_manager: FunctionManager,
+
+    /// Manages Codes
+    code_manager: CodeManager,
 }
 
 impl Generator {
@@ -137,10 +156,23 @@ impl Generator {
             ast: program,
             type_manager: TypeManager::new(),
             module: Module::new(),
+            code_manager: CodeManager::new(),
+            function_manager: FunctionManager::new(),
         }
     }
 
-    pub fn visit(&mut self) -> Self {}
+    pub fn visit(&mut self) {
+        let ast = self.ast.clone();
+        ast.generate_instructions(self);
+    }
+
+    pub fn generate(&mut self) -> Vec<u8> {
+        self.module.section(&self.type_manager.get_section());
+        self.module.section(&self.function_manager.get_section());
+        self.module.section(&self.code_manager.get_section());
+
+        self.module.clone().finish()
+    }
 }
 
 pub struct TypeManager {
@@ -168,5 +200,59 @@ impl TypeManager {
         self.types_index += 1;
 
         index
+    }
+
+    pub fn get_section(&self) -> TypeSection {
+        self.section.clone()
+    }
+}
+
+pub struct FunctionManager {
+    section: FunctionSection,
+    functions_index: u32,
+}
+
+impl FunctionManager {
+    pub fn new() -> Self {
+        Self {
+            section: FunctionSection::new(),
+            functions_index: 0,
+        }
+    }
+
+    pub fn new_function(&mut self, type_index: u32) {
+        self.section.function(type_index);
+
+        self.functions_index += 1;
+    }
+
+    pub fn get_section(&self) -> FunctionSection {
+        self.section.clone()
+    }
+}
+
+pub struct CodeManager {
+    section: CodeSection,
+}
+
+impl CodeManager {
+    pub fn new() -> Self {
+        Self {
+            section: CodeSection::new(),
+        }
+    }
+
+    pub fn new_function_code(&mut self, instructions: Vec<Instruction>) {
+        let mut func = Function::new(vec![]);
+
+        for instruction in &instructions {
+            func.instruction(instruction);
+        }
+
+        self.section.function(&func);
+    }
+
+    pub fn get_section(&self) -> CodeSection {
+        self.section.clone()
     }
 }
