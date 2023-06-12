@@ -7,8 +7,8 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, Expression, FunctionStatement, Identifier, InfixExpr, Integer, Program,
-        Statement,
+        BlockStatement, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
+        LetStatement, Program, Statement,
     },
 };
 
@@ -112,6 +112,22 @@ impl<'a> Instructions<'a> for Identifier {
     }
 }
 
+impl<'a> Instructions<'a> for LetStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result: Vec<Instruction> = vec![];
+        let let_value = self.value.generate_instructions(gen)?;
+
+        result.extend(let_value);
+
+        // create new local
+        let local_index = gen.local_manager.new_local(self.name.value.clone());
+        gen.code_manager.current_locals.push(ValType::I32);
+        result.push(Instruction::LocalSet(local_index));
+
+        Ok(result)
+    }
+}
+
 impl<'a> Instructions<'a> for BlockStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
@@ -150,6 +166,7 @@ impl<'a> Instructions<'a> for Statement {
                         name: param.value,
                     })
                     .collect::<Vec<FunctionParam>>();
+                gen.local_manager.add_to_index(func.params.len() as u32);
 
                 gen.function_manager
                     .new_function(type_index, func.name.value.clone(), params);
@@ -161,6 +178,8 @@ impl<'a> Instructions<'a> for Statement {
             }
 
             Statement::Expression(expr) => expr.generate_instructions(gen),
+
+            Statement::Let(var) => var.generate_instructions(gen),
 
             _ => todo!(),
         }
@@ -193,6 +212,8 @@ pub struct Generator {
 
     /// Manages Codes
     code_manager: CodeManager,
+
+    local_manager: LocalManager,
 }
 
 impl Generator {
@@ -204,10 +225,11 @@ impl Generator {
             module: Module::new(),
             code_manager: CodeManager::new(),
             function_manager: FunctionManager::new(),
+            local_manager: LocalManager::new(),
         }
     }
 
-    pub fn visit(&mut self) -> CResult<()>{
+    pub fn visit(&mut self) -> CResult<()> {
         let ast = self.ast.clone();
 
         ast.generate_instructions(self)?;
@@ -312,17 +334,22 @@ impl FunctionManager {
 
 pub struct CodeManager {
     section: CodeSection,
+    current_locals: Vec<ValType>,
 }
 
 impl CodeManager {
     pub fn new() -> Self {
         Self {
             section: CodeSection::new(),
+            current_locals: vec![],
         }
     }
 
     pub fn new_function_code(&mut self, instructions: Vec<Instruction>) {
-        let mut func = Function::new(vec![]);
+        let mut func = Function::new_with_locals_types(self.current_locals.clone());
+
+        // idk is this is ok?
+        self.current_locals.clear();
 
         for instruction in &instructions {
             func.instruction(instruction);
@@ -333,5 +360,48 @@ impl CodeManager {
 
     pub fn get_section(&self) -> CodeSection {
         self.section.clone()
+    }
+}
+
+pub struct LocalManager {
+    /// name, id
+    ///
+    /// for example when new let were created
+    /// new entry in this hasmap with (let name, index)
+    ///
+    /// wich first let index is 0 second is 1 and so on
+    locals: HashMap<String, u32>,
+
+    /// Index
+    locals_index: u32,
+}
+
+impl LocalManager {
+    /// Create new local manager
+    pub fn new() -> Self {
+        Self {
+            locals: HashMap::new(),
+            locals_index: 0,
+        }
+    }
+
+    /// Sometimes we already has a function params
+    ///
+    /// and we want to advance the index with params.len
+    pub fn add_to_index(&mut self, how_much: u32) {
+        self.locals_index += how_much;
+    }
+
+    /// Creates new local var
+    ///
+    /// and returns the index
+    /// if its exists will overwrite it
+    pub fn new_local(&mut self, name: String) -> u32 {
+        let index = self.locals_index;
+        self.locals.insert(name, self.locals_index.clone());
+
+        self.locals_index += 1;
+
+        index
     }
 }
