@@ -94,21 +94,13 @@ impl<'a> Instructions<'a> for Expression {
 
 impl<'a> Instructions<'a> for Identifier {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        // Is it the let or function arg
-        // TODO: remove unwrap
-        let Some(func) = gen.function_manager.current_function() else {
-            return Err(CompilerError::NotDefined("Function is not defined!".to_string()));
+        let Some(id) = gen.local_manager.get_local_index(&self.value) else {
+            return Err(
+                CompilerError::NotDefined(format!("Variable with name {} is not defined!", self.value))
+            );
         };
-        let Some(param) = func
-            .params
-            .into_iter()
-            .find(|param| param.name == self.value) else {
-                return Err(
-                    CompilerError::NotDefined(format!("Variable with name {} is not defined!", self.value))
-                );
-            };
 
-        Ok(vec![Instruction::LocalGet(param.id)])
+        Ok(vec![Instruction::LocalGet(id.clone())])
     }
 }
 
@@ -166,7 +158,10 @@ impl<'a> Instructions<'a> for Statement {
                         name: param.value,
                     })
                     .collect::<Vec<FunctionParam>>();
-                gen.local_manager.add_to_index(func.params.len() as u32);
+
+                for param in &func.params {
+                    gen.local_manager.new_local(param.value.to_owned());
+                }
 
                 gen.function_manager
                     .new_function(type_index, func.name.value.clone(), params);
@@ -385,15 +380,12 @@ impl LocalManager {
         }
     }
 
-    /// Sometimes we already has a function params
-    ///
-    /// and we want to advance the index with params.len
-    pub fn add_to_index(&mut self, how_much: u32) {
-        self.locals_index += how_much;
-    }
-
     pub fn local_exists(&self, name: &String) -> bool {
         self.locals.contains_key(name)
+    }
+
+    pub fn get_local_index(&self, name: &String) -> Option<&u32> {
+        self.locals.get(name)
     }
 
     /// Creates new local var
