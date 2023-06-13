@@ -7,7 +7,7 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
+        BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
         LetStatement, Program, Statement,
     },
 };
@@ -46,8 +46,29 @@ pub trait Instructions<'a> {
         Self: Sized;
 }
 
-impl<'a> Instructions<'a> for Token {
+impl<'a> Instructions<'a> for CallExpr {
+    // TODO: First check if the function exists
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result: Vec<Instruction> = vec![];
+
+        for arg in &self.arguments {
+            result.extend(arg.generate_instructions(gen)?);
+        }
+
+        let Some(func) = gen.function_manager.get_function(&self.function.value) else {
+            return Err(
+                CompilerError::NotDefined(format!("Function with name {} is not defined!", self.function.value))
+            );
+        };
+
+        result.push(Instruction::Call(func.id));
+
+        Ok(result)
+    }
+}
+
+impl<'a> Instructions<'a> for Token {
+    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
             Token::Plus => Ok(vec![Instruction::I32Add]),
             Token::Minus => Ok(vec![Instruction::I32Sub]),
@@ -86,6 +107,7 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Integer(int) => Ok(int.generate_instructions(gen)?),
             Expression::Infix(infix) => Ok(infix.generate_instructions(gen)?),
             Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
+            Expression::Call(call) => Ok(call.generate_instructions(gen)?),
 
             _ => todo!(),
         }
@@ -168,6 +190,8 @@ impl<'a> Instructions<'a> for Statement {
 
                 let block = func.generate_instructions(gen)?;
                 gen.code_manager.new_function_code(block);
+
+                gen.local_manager.reset();
 
                 Ok(vec![])
             }
@@ -307,6 +331,10 @@ impl FunctionManager {
         self.current_function.clone()
     }
 
+    pub fn get_function(&self, function_name: &String) -> Option<&FunctionData> {
+        self.functions.get(function_name)
+    }
+
     pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
         let new_fn = FunctionData {
             params,
@@ -386,6 +414,11 @@ impl LocalManager {
 
     pub fn get_local_index(&self, name: &String) -> Option<&u32> {
         self.locals.get(name)
+    }
+
+    /// When we create a new function
+    pub fn reset(&mut self) {
+        self.locals_index = 0;
     }
 
     /// Creates new local var

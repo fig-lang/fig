@@ -172,7 +172,14 @@ impl<'a> Parse<'a> for Expression {
 
             if parser.next_token_is(Token::Lparen) {
                 parser.next_token();
-                left_expr = Expression::Call(CallExpr::parse(parser, left_expr)?);
+                let fn_name = match left_expr {
+                    Self::Identifier(ident) => Ok(ident),
+                    _ => Err(ParserError::expected(
+                        "function name".to_string(),
+                        "Expression".to_string(),
+                    )),
+                }?;
+                left_expr = Expression::Call(CallExpr::parse(parser, fn_name)?);
                 break;
             }
 
@@ -342,16 +349,16 @@ impl<'a> Parse<'a> for FunctionExpr {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CallExpr {
-    pub(crate) function: Box<Expression>, // Identifier or Function
+    pub(crate) function: Identifier, // Identifier or Function
     pub(crate) arguments: Vec<Expression>,
 }
 
 impl CallExpr {
-    fn parse<'a>(parser: &mut Parser<'a>, function: Expression) -> PResult<Self> {
+    fn parse<'a>(parser: &mut Parser<'a>, function: Identifier) -> PResult<Self> {
         let args = Self::parse_args(parser)?;
 
         Ok(CallExpr {
-            function: Box::new(function),
+            function,
             arguments: args,
         })
     }

@@ -13,10 +13,16 @@ use crate::codegen::codegen::Generator;
 
 fn main() {
     let source = r#"
-        fn x(hello, ok, z) {
-            let x = 2;
+        fn something (x, y) {
+            x = 2;
+            x * y
+        }
 
-            hello * x
+        fn x() {
+            let x = 2;
+            let y = 3;
+
+            something(x, y);
         }
         "#;
 
