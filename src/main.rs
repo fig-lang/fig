@@ -12,21 +12,7 @@ use parser::parser::{Parse, Parser};
 use crate::codegen::codegen::Generator;
 
 fn main() {
-    let source = r#"
-        fn something (x, y) {
-            x = 2;
-            x * y
-        }
-
-        fn x() {
-            let x = 2;
-            let y = 3;
-
-            something(x, y);
-        }
-        "#;
-
-    let mut lexer = Lexer::new(source.to_string());
+    let mut lexer = Lexer::new("".to_string());
     let mut parser = Parser::new(&mut lexer);
     let program = Program::parse(&mut parser, None).unwrap();
 

@@ -412,6 +412,7 @@ impl<'a> Parse<'a> for BooleanExpr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Integer {
     pub(crate) value: i32,
+    //pub(crate) type: Type,
 }
 
 impl<'a> Parse<'a> for Integer {
@@ -823,9 +824,9 @@ mod tests {
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
         let expected_statements = [Statement::Expression(Expression::Call(CallExpr {
-            function: Box::new(Expression::Identifier(Identifier {
+            function: Identifier {
                 value: "hello".to_string(),
-            })),
+            },
             arguments: vec![],
         }))];
 
@@ -843,9 +844,9 @@ mod tests {
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
         let expected_statements = [Statement::Expression(Expression::Call(CallExpr {
-            function: Box::new(Expression::Identifier(Identifier {
+            function: Identifier {
                 value: "hello".to_string(),
-            })),
+            },
             arguments: vec![
                 Expression::Integer(Integer { value: 1 }),
                 Expression::Infix(InfixExpr {
