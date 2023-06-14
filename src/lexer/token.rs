@@ -35,6 +35,8 @@ pub enum Token {
     Return,
     True,
     False,
+
+    String(String),
 }
 
 impl Display for Token {
@@ -74,6 +76,8 @@ impl Display for Token {
             Return => write!(f, "return"),
             True => write!(f, "true"),
             False => write!(f, "false"),
+
+            String(s) => write!(f, "'{}'", s),
         }
     }
 }

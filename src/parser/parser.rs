@@ -3,7 +3,7 @@ use std::mem;
 
 use crate::lexer::{lexer::Lexer, token::Token};
 
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum Precedence {
     Lowest,

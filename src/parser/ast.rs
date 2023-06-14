@@ -111,7 +111,7 @@ impl<'a> Parse<'a> for LetStatement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReturnStatement {
-    return_value: Expression,
+    pub(crate) return_value: Expression,
 }
 
 impl<'a> Parse<'a> for ReturnStatement {
@@ -137,6 +137,7 @@ pub enum Expression {
     Boolean(BooleanExpr),
     If(IfExpr),
     Call(CallExpr),
+    String(StringExpr),
 }
 
 impl<'a> Parse<'a> for Expression {
@@ -155,6 +156,9 @@ impl<'a> Parse<'a> for Expression {
             }
 
             Token::If => Expression::If(IfExpr::parse(parser, precedence.clone())?),
+
+            Token::String(_) => Expression::String(StringExpr::parse(parser, None)?),
+
             // Parse grouped expressions
             Token::Lparen => {
                 parser.next_token();
@@ -207,6 +211,22 @@ impl<'a> Parse<'a> for Expression {
         }
 
         Ok(left_expr)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StringExpr {
+    pub(crate) string: String,
+}
+
+impl<'a> Parse<'a> for StringExpr {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        match &parser.current_token {
+            Token::String(s) => Ok(Self {
+                string: s.to_owned(),
+            }),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -482,6 +502,7 @@ mod tests {
             let z: i32 = !2;
             let y: i32 = 2 / 3;
             let t: i32 = 2 - 3;
+            let b: string = "Hello World";
             "#;
         let mut lexer = Lexer::new(source.to_string());
         let mut parser = Parser::new(&mut lexer);
@@ -529,6 +550,15 @@ mod tests {
                     left: Box::new(Expression::Integer(Integer { value: 2 })),
                     operator: Token::Minus,
                     right: Box::new(Expression::Integer(Integer { value: 3 })),
+                }),
+            }),
+            Statement::Let(LetStatement {
+                value_type: Type::String,
+                name: Identifier {
+                    value: "b".to_string(),
+                },
+                value: Expression::String(StringExpr {
+                    string: "Hello World".to_string(),
                 }),
             }),
         ];

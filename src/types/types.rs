@@ -10,6 +10,8 @@ pub enum Type {
     F32,
     F64,
 
+    String,
+
     Unknown,
 }
 
@@ -20,6 +22,7 @@ impl From<String> for Type {
             "i64" => Self::I64,
             "f32" => Self::F32,
             "f64" => Self::F64,
+            "string" => Self::String,
             _ => Self::Unknown,
         }
     }
@@ -34,6 +37,9 @@ impl TryInto<ValType> for Type {
             Self::I64 => Ok(ValType::I64),
             Self::F32 => Ok(ValType::F32),
             Self::F64 => Ok(ValType::F64),
+
+            // pointer of the string
+            Self::String => Ok(ValType::I32),
 
             _t => Err(CompilerError::NotDefined(
                 "type is not supported".to_string(),

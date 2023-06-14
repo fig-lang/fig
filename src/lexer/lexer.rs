@@ -55,6 +55,8 @@ impl Lexer {
                 }
             }
 
+            b'"' => Token::String(self.read_string()),
+
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => match self.peek() {
                 b'0'..=b'9' => {
                     let char = self.ch;
@@ -130,6 +132,19 @@ impl Lexer {
 
         return String::from_utf8_lossy(&self.input[pos..self.position]).to_string();
     }
+
+    fn read_string(&mut self) -> String {
+        let pos = self.position + 1;
+
+        loop {
+            self.read_char();
+            if self.ch == b'"' || self.ch == 0 {
+                break;
+            }
+        }
+
+        return String::from_utf8_lossy(&self.input[pos..self.position]).to_string();
+    }
 }
 
 #[cfg(test)]
@@ -176,6 +191,8 @@ mod test {
 
         10 == 10;
         10 != 9;
+
+        "hello world"
         "#;
 
         let mut lex = Lexer::new(input.into());
@@ -256,6 +273,7 @@ mod test {
             Token::NotEqual,
             Token::Int(String::from("9")),
             Token::Semicolon,
+            Token::String("hello world".to_string()),
             Token::Eof,
         ];
 

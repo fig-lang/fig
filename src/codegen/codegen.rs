@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use wasm_encoder::{
-    CodeSection, Function, FunctionSection, Instruction, Module, TypeSection, ValType,
+    CodeSection, ConstExpr, DataSection, Function, FunctionSection, Instruction, MemorySection,
+    MemoryType, Module, TypeSection, ValType, TableSection, GlobalSection, ExportSection, ImportSection, ElementSection,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
         BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
-        LetStatement, Program, Statement,
+        LetStatement, Program, ReturnStatement, Statement, StringExpr,
     },
-    types::types::Type,
 };
 
 #[derive(Debug)]
@@ -68,6 +68,20 @@ impl<'a> Instructions<'a> for CallExpr {
     }
 }
 
+impl<'a> Instructions<'a> for StringExpr {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let size = self.string.len() + 1;
+
+        let mut string = self.string.to_owned();
+        string.push('\0');
+
+        gen.memory_manager
+            .alloc(size as i32, string.as_bytes().to_vec());
+
+        Ok(vec![Instruction::I32Const(1)])
+    }
+}
+
 impl<'a> Instructions<'a> for Token {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
@@ -102,6 +116,19 @@ impl<'a> Instructions<'a> for Integer {
     }
 }
 
+impl<'a> Instructions<'a> for ReturnStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result = vec![];
+
+        let expr = self.return_value.generate_instructions(gen)?;
+        result.extend(expr);
+
+        result.push(Instruction::Return);
+
+        Ok(result)
+    }
+}
+
 impl<'a> Instructions<'a> for Expression {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
@@ -109,8 +136,9 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Infix(infix) => Ok(infix.generate_instructions(gen)?),
             Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
             Expression::Call(call) => Ok(call.generate_instructions(gen)?),
+            Expression::String(s) => Ok(s.generate_instructions(gen)?),
 
-            _ => todo!(),
+            x => panic!("{:?}", x),
         }
     }
 }
@@ -136,7 +164,9 @@ impl<'a> Instructions<'a> for LetStatement {
 
         // create new local
         let local_index = gen.local_manager.new_local(self.name.value.clone());
-        gen.code_manager.current_locals.push(self.value_type.clone().try_into()?);
+        gen.code_manager
+            .current_locals
+            .push(self.value_type.clone().try_into()?);
 
         result.push(Instruction::LocalSet(local_index));
 
@@ -201,6 +231,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Expression(expr) => expr.generate_instructions(gen),
 
             Statement::Let(var) => var.generate_instructions(gen),
+            Statement::Return(ret) => ret.generate_instructions(gen),
 
             _ => todo!(),
         }
@@ -235,11 +266,19 @@ pub struct Generator {
     code_manager: CodeManager,
 
     local_manager: LocalManager,
+
+    memory_manager: MemoryManager,
 }
 
 impl Generator {
     /// Creates the new Generator
     pub fn new(program: Program) -> Self {
+        let mem = MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+        };
         Self {
             ast: program,
             type_manager: TypeManager::new(),
@@ -247,6 +286,7 @@ impl Generator {
             code_manager: CodeManager::new(),
             function_manager: FunctionManager::new(),
             local_manager: LocalManager::new(),
+            memory_manager: MemoryManager::new(mem),
         }
     }
 
@@ -260,8 +300,19 @@ impl Generator {
 
     pub fn generate(&mut self) -> Vec<u8> {
         self.module.section(&self.type_manager.get_section());
+        self.module.section(&ImportSection::new());
         self.module.section(&self.function_manager.get_section());
+        self.module.section(&TableSection::new());
+
+        let (mem_section, data_section) = &self.memory_manager.get_sections();
+
+        self.module.section(mem_section);
+        self.module.section(&GlobalSection::new());
+        self.module.section(&ExportSection::new());
+        self.module.section(&ElementSection::new());
+
         self.module.section(&self.code_manager.get_section());
+        self.module.section(data_section);
 
         self.module.clone().finish()
     }
@@ -373,7 +424,7 @@ impl CodeManager {
     pub fn new_function_code(&mut self, instructions: Vec<Instruction>) {
         let mut func = Function::new_with_locals_types(self.current_locals.clone());
 
-        // idk is this is ok?
+        // idk is this ok?
         self.current_locals.clear();
 
         for instruction in &instructions {
@@ -387,7 +438,6 @@ impl CodeManager {
         self.section.clone()
     }
 }
-
 pub struct LocalManager {
     /// name, id
     ///
@@ -434,5 +484,41 @@ impl LocalManager {
         self.locals_index += 1;
 
         index
+    }
+}
+
+pub struct MemoryManager {
+    memory_section: MemorySection,
+    data_section: DataSection,
+
+    offset: i32,
+}
+
+impl MemoryManager {
+    pub fn new(memory: MemoryType) -> Self {
+        let mut memory_section = MemorySection::new();
+        memory_section.memory(memory);
+
+        Self {
+            memory_section,
+            data_section: DataSection::new(),
+            offset: 0,
+        }
+    }
+
+    pub fn alloc<D>(&mut self, size: i32, data: D)
+    where
+        D: IntoIterator<Item = u8>,
+        D::IntoIter: ExactSizeIterator,
+    {
+        let offset = ConstExpr::i32_const(self.offset as i32);
+
+        self.data_section.active(0, &offset, data);
+
+        self.offset += size;
+    }
+
+    pub fn get_sections(&self) -> (MemorySection, DataSection) {
+        (self.memory_section.clone(), self.data_section.clone())
     }
 }
