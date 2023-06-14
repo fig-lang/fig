@@ -1,6 +1,7 @@
 mod codegen;
 mod lexer;
 mod parser;
+mod types;
 
 use std::fs::File;
 use std::io::Write;
@@ -12,7 +13,13 @@ use parser::parser::{Parse, Parser};
 use crate::codegen::codegen::Generator;
 
 fn main() {
-    let mut lexer = Lexer::new("".to_string());
+    let source = "fn x(filan: i32) {
+        let xxx: i32 = 33;
+        let xx: i64 = 55;
+
+        xxx * xx
+    }";
+    let mut lexer = Lexer::new(source.to_string());
     let mut parser = Parser::new(&mut lexer);
     let program = Program::parse(&mut parser, None).unwrap();
 

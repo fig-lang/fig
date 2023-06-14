@@ -1,6 +1,5 @@
 use super::token::Token;
 
-
 #[derive(Clone, Debug)]
 pub struct Lexer {
     position: usize,
@@ -42,7 +41,7 @@ impl Lexer {
                 } else {
                     Token::Bang
                 }
-            },
+            }
             b'>' => Token::GreaterThan,
             b'<' => Token::LessThan,
             b'*' => Token::Asterisk,
@@ -54,23 +53,35 @@ impl Lexer {
                 } else {
                     Token::Assign
                 }
-            },
-            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                let ident = self.read_ident();
-                return Ok(match ident.as_str() {
-                    "fn" => Token::Function,
-                    "let" => Token::Let,
-                    "if" => Token::If,
-                    "false" => Token::False,
-                    "true" => Token::True,
-                    "return" => Token::Return,
-                    "else" => Token::Else,
-                    _ => Token::Ident(ident),
-                });
+            }
+
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => match self.peek() {
+                b'0'..=b'9' => {
+                    let char = self.ch;
+                    self.read_char();
+                    let int = self.read_int();
+                    self.read_position -= 1;
+
+                    Token::Ident(format!("{}{}", char::from(char), int))
+                }
+
+                _ => {
+                    let ident = self.read_ident();
+                    return Ok(match ident.as_str() {
+                        "fn" => Token::Function,
+                        "let" => Token::Let,
+                        "if" => Token::If,
+                        "false" => Token::False,
+                        "true" => Token::True,
+                        "return" => Token::Return,
+                        "else" => Token::Else,
+                        _ => Token::Ident(ident),
+                    });
+                }
             },
             b'0'..=b'9' => return Ok(Token::Int(self.read_int())),
             0 => Token::Eof,
-            _ => todo!("we need to implement this....")
+            _ => Token::Illegal,
         };
 
         self.read_char();
@@ -121,10 +132,9 @@ impl Lexer {
     }
 }
 
-
 #[cfg(test)]
 mod test {
-    use super::{Token, Lexer};
+    use super::{Lexer, Token};
 
     #[test]
     fn get_next_token() {
@@ -149,8 +159,8 @@ mod test {
     }
 
     #[test]
-    fn get_next_complete()  {
-        let input = r#"let five = 5;
+    fn get_next_complete() {
+        let input = r#"let five: i32 = 5;
             let ten = 10;
             let add = fn(x, y) {
                 x + y;
@@ -168,12 +178,13 @@ mod test {
         10 != 9;
         "#;
 
-
         let mut lex = Lexer::new(input.into());
 
         let tokens = vec![
             Token::Let,
             Token::Ident(String::from("five")),
+            Token::Colon,
+            Token::Ident(String::from("i32")),
             Token::Assign,
             Token::Int(String::from("5")),
             Token::Semicolon,
@@ -208,8 +219,6 @@ mod test {
             Token::Ident(String::from("ten")),
             Token::Rparen,
             Token::Semicolon,
-
-
             Token::Bang,
             Token::Minus,
             Token::ForwardSlash,
@@ -239,7 +248,6 @@ mod test {
             Token::False,
             Token::Semicolon,
             Token::RSquirly,
-
             Token::Int(String::from("10")),
             Token::Equal,
             Token::Int(String::from("10")),
@@ -248,7 +256,6 @@ mod test {
             Token::NotEqual,
             Token::Int(String::from("9")),
             Token::Semicolon,
-
             Token::Eof,
         ];
 

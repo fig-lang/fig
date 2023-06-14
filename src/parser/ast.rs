@@ -1,5 +1,23 @@
 use super::parser::{PResult, Parse, Parser, ParserError, Precedence};
 use crate::lexer::token::Token;
+use crate::types::types::Type;
+
+impl<'a> Parse<'a> for Type {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // skip ':' char
+        parser.next_token();
+
+        let type_ident = Identifier::parse(parser, precedence)?;
+
+        let type_value = Type::from(type_ident.value.clone());
+
+        if type_value == Type::Unknown {
+            return Err(ParserError::unexpected(type_ident.value));
+        }
+
+        Ok(type_value)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
@@ -57,6 +75,7 @@ impl<'a> Parse<'a> for BlockStatement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LetStatement {
+    pub(crate) value_type: Type,
     pub(crate) name: Identifier,
     pub(crate) value: Expression,
 }
@@ -67,6 +86,10 @@ impl<'a> Parse<'a> for LetStatement {
         parser.next_token();
 
         let ident = Identifier::parse(parser, precedence.clone())?;
+
+        parser.next_token();
+
+        let value_type = Type::parse(parser, precedence)?;
 
         parser.expect_peek(Token::Assign)?;
 
@@ -79,6 +102,7 @@ impl<'a> Parse<'a> for LetStatement {
         }
 
         Ok(LetStatement {
+            value_type,
             name: ident,
             value: let_value,
         })
@@ -112,7 +136,6 @@ pub enum Expression {
     Infix(InfixExpr),
     Boolean(BooleanExpr),
     If(IfExpr),
-    Function(FunctionExpr),
     Call(CallExpr),
 }
 
@@ -132,10 +155,6 @@ impl<'a> Parse<'a> for Expression {
             }
 
             Token::If => Expression::If(IfExpr::parse(parser, precedence.clone())?),
-            Token::Function => {
-                Expression::Function(FunctionExpr::parse(parser, precedence.clone())?)
-            }
-
             // Parse grouped expressions
             Token::Lparen => {
                 parser.next_token();
@@ -274,37 +293,13 @@ impl<'a> Parse<'a> for IfExpr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionStatement {
     pub(crate) name: Identifier,
-    pub(crate) params: Vec<Identifier>,
+    pub(crate) params: Vec<(Identifier, Type)>,
     pub(crate) body: BlockStatement,
 }
 
-impl<'a> Parse<'a> for FunctionStatement {
-    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
-        parser.next_token();
-
-        let name = Identifier::parse(parser, precedence.clone())?;
-
-        parser.expect_peek(Token::Lparen)?;
-
-        let params = FunctionExpr::parse_function_params(parser)?;
-
-        parser.expect_peek(Token::LSquirly)?;
-
-        let body = BlockStatement::parse(parser, precedence)?;
-
-        Ok(FunctionStatement { name, params, body })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FunctionExpr {
-    params: Vec<Identifier>,
-    body: BlockStatement,
-}
-
-impl FunctionExpr {
-    fn parse_function_params<'a>(parser: &mut Parser<'a>) -> PResult<Vec<Identifier>> {
-        let mut params: Vec<Identifier> = vec![];
+impl FunctionStatement {
+    fn parse_function_params<'a>(parser: &mut Parser<'a>) -> PResult<Vec<(Identifier, Type)>> {
+        let mut params: Vec<(Identifier, Type)> = vec![];
 
         if parser.next_token_is(Token::Rparen) {
             parser.next_token();
@@ -316,15 +311,21 @@ impl FunctionExpr {
 
         let param = Identifier::parse(parser, None)?;
 
-        params.push(param);
+        parser.next_token();
+
+        let param_type = Type::parse(parser, None)?;
+
+        params.push((param, param_type));
 
         while parser.next_token_is(Token::Comma) {
             parser.next_token();
             parser.next_token();
 
             let param = Identifier::parse(parser, None)?;
+            parser.next_token();
+            let param_type = Type::parse(parser, None)?;
 
-            params.push(param);
+            params.push((param, param_type));
         }
 
         parser.expect_peek(Token::Rparen)?;
@@ -333,8 +334,12 @@ impl FunctionExpr {
     }
 }
 
-impl<'a> Parse<'a> for FunctionExpr {
+impl<'a> Parse<'a> for FunctionStatement {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        parser.next_token();
+
+        let name = Identifier::parse(parser, precedence.clone())?;
+
         parser.expect_peek(Token::Lparen)?;
 
         let params = Self::parse_function_params(parser)?;
@@ -343,7 +348,7 @@ impl<'a> Parse<'a> for FunctionExpr {
 
         let body = BlockStatement::parse(parser, precedence)?;
 
-        Ok(FunctionExpr { params, body })
+        Ok(FunctionStatement { name, params, body })
     }
 }
 
@@ -412,7 +417,6 @@ impl<'a> Parse<'a> for BooleanExpr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Integer {
     pub(crate) value: i32,
-    //pub(crate) type: Type,
 }
 
 impl<'a> Parse<'a> for Integer {
@@ -474,10 +478,10 @@ mod tests {
     #[test]
     fn test_let() {
         let source = r#"
-            let x = 1 * 1;
-            let z = !2;
-            let y = 2 / 3;
-            let t = 2 - 3;
+            let x: i32 = 1 * 1;
+            let z: i32 = !2;
+            let y: i32 = 2 / 3;
+            let t: i32 = 2 - 3;
             "#;
         let mut lexer = Lexer::new(source.to_string());
         let mut parser = Parser::new(&mut lexer);
@@ -485,6 +489,7 @@ mod tests {
 
         let expected_statements = [
             Statement::Let(LetStatement {
+                value_type: Type::I32,
                 name: Identifier {
                     value: "x".to_string(),
                 },
@@ -495,6 +500,7 @@ mod tests {
                 }),
             }),
             Statement::Let(LetStatement {
+                value_type: Type::I32,
                 name: Identifier {
                     value: "z".to_string(),
                 },
@@ -504,6 +510,7 @@ mod tests {
                 }),
             }),
             Statement::Let(LetStatement {
+                value_type: Type::I32,
                 name: Identifier {
                     value: "y".to_string(),
                 },
@@ -514,6 +521,7 @@ mod tests {
                 }),
             }),
             Statement::Let(LetStatement {
+                value_type: Type::I32,
                 name: Identifier {
                     value: "t".to_string(),
                 },
@@ -602,7 +610,7 @@ mod tests {
     #[test]
     fn test_if_statement_with_else() {
         // very usefull code
-        let source = r#"let x = if (y == 1) {
+        let source = r#"let x: i32 = if (y == 1) {
             return y + 1; 
         } else {
             return 1;
@@ -614,6 +622,7 @@ mod tests {
 
         // wtf is this ?
         let expected_statements = [Statement::Let(LetStatement {
+            value_type: Type::I32,
             name: Identifier {
                 value: "x".to_string(),
             },
@@ -652,7 +661,7 @@ mod tests {
     #[test]
     fn test_if_statement_without_else() {
         // very usefull code
-        let source = r#"let x = if (y == 1) {
+        let source = r#"let x: i32 = if (y == 1) {
             return y + 1; 
         }"#;
 
@@ -662,6 +671,7 @@ mod tests {
 
         // wtf is this ?
         let expected_statements = [Statement::Let(LetStatement {
+            value_type: Type::I32,
             name: Identifier {
                 value: "x".to_string(),
             },
@@ -718,7 +728,7 @@ mod tests {
 
     #[test]
     fn test_function_expr_with_empty_args() {
-        let source = r#"let func = fn() {
+        let source = r#"fn some() {
             1;
         }"#;
 
@@ -726,18 +736,16 @@ mod tests {
         let mut parser = Parser::new(&mut lexer);
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
-        let expected_statements = [Statement::Let(LetStatement {
+        let expected_statements = [Statement::Function(FunctionStatement {
             name: Identifier {
-                value: "func".to_string(),
+                value: "some".to_string(),
             },
-            value: Expression::Function(FunctionExpr {
-                params: vec![],
-                body: BlockStatement {
-                    statements: vec![Statement::Expression(Expression::Integer(Integer {
-                        value: 1,
-                    }))],
-                },
-            }),
+            params: vec![],
+            body: BlockStatement {
+                statements: vec![Statement::Expression(Expression::Integer(Integer {
+                    value: 1,
+                }))],
+            },
         })];
 
         for i in 0..program.statements.len() {
@@ -747,74 +755,29 @@ mod tests {
 
     #[test]
     fn test_function_expr_one_args() {
-        let source = r#"let func = fn(x) {
-        1;
-    }"#;
+        let source = r#"fn some(x: i32) {}"#;
 
         let mut lexer = Lexer::new(source.to_string());
         let mut parser = Parser::new(&mut lexer);
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
-        let expected_statements = [Statement::Let(LetStatement {
+        let expected_statements = [Statement::Function(FunctionStatement {
             name: Identifier {
-                value: "func".to_string(),
+                value: "some".to_string(),
             },
-            value: Expression::Function(FunctionExpr {
-                params: vec![Identifier {
+            params: vec![(
+                Identifier {
                     value: "x".to_string(),
-                }],
-                body: BlockStatement {
-                    statements: vec![Statement::Expression(Expression::Integer(Integer {
-                        value: 1,
-                    }))],
                 },
-            }),
+                Type::I32,
+            )],
+            body: BlockStatement { statements: vec![] },
         })];
 
         for i in 0..program.statements.len() {
             assert_eq!(program.statements[i], expected_statements[i]);
         }
     }
-
-    #[test]
-    fn test_function_expr_some_args() {
-        let source = r#"let func = fn(x, y, z) {
-        1;
-    }"#;
-
-        let mut lexer = Lexer::new(source.to_string());
-        let mut parser = Parser::new(&mut lexer);
-        let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
-
-        let expected_statements = [Statement::Let(LetStatement {
-            name: Identifier {
-                value: "func".to_string(),
-            },
-            value: Expression::Function(FunctionExpr {
-                params: vec![
-                    Identifier {
-                        value: "x".to_string(),
-                    },
-                    Identifier {
-                        value: "y".to_string(),
-                    },
-                    Identifier {
-                        value: "z".to_string(),
-                    },
-                ],
-                body: BlockStatement {
-                    statements: vec![Statement::Expression(Expression::Integer(Integer {
-                        value: 1,
-                    }))],
-                },
-            }),
-        })];
-
-        for i in 0..program.statements.len() {
-            assert_eq!(program.statements[i], expected_statements[i]);
-        }
-    }
-
     #[test]
     fn test_function_call() {
         let source = r#"hello();"#;

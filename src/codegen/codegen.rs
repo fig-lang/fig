@@ -10,6 +10,7 @@ use crate::{
         BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
         LetStatement, Program, Statement,
     },
+    types::types::Type,
 };
 
 #[derive(Debug)]
@@ -25,16 +26,16 @@ pub trait WasmTypes {
 }
 
 impl WasmTypes for FunctionStatement {
-    type Output = (Vec<ValType>, Vec<ValType>);
+    type Output = CResult<(Vec<ValType>, Vec<ValType>)>;
 
     fn types(&self) -> Self::Output {
         let mut param_type: Vec<ValType> = vec![];
 
-        for _param in &self.params {
-            param_type.push(ValType::I32);
+        for param in &self.params {
+            param_type.push(param.1.clone().try_into()?);
         }
 
-        (param_type, vec![ValType::I32])
+        Ok((param_type, vec![ValType::I32]))
     }
 }
 
@@ -135,7 +136,8 @@ impl<'a> Instructions<'a> for LetStatement {
 
         // create new local
         let local_index = gen.local_manager.new_local(self.name.value.clone());
-        gen.code_manager.current_locals.push(ValType::I32);
+        gen.code_manager.current_locals.push(self.value_type.clone().try_into()?);
+
         result.push(Instruction::LocalSet(local_index));
 
         Ok(result)
@@ -166,7 +168,7 @@ impl<'a> Instructions<'a> for Statement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
             Statement::Function(func) => {
-                let types = func.types();
+                let types = func.types()?;
                 let type_index = gen.type_manager.new_function_type(types.0.clone(), types.1);
 
                 let params = types
@@ -177,12 +179,12 @@ impl<'a> Instructions<'a> for Statement {
                     .map(|(i, (t, param))| FunctionParam {
                         id: i as u32,
                         param_type: t,
-                        name: param.value,
+                        name: param.0.value,
                     })
                     .collect::<Vec<FunctionParam>>();
 
                 for param in &func.params {
-                    gen.local_manager.new_local(param.value.to_owned());
+                    gen.local_manager.new_local(param.0.value.to_owned());
                 }
 
                 gen.function_manager
