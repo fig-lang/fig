@@ -275,9 +275,9 @@ impl<'a> InfixExpr {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IfExpr {
-    condition: Box<Expression>,
-    consequence: BlockStatement,
-    alternative: Option<BlockStatement>,
+    pub(crate) condition: Box<Expression>,
+    pub(crate) consequence: BlockStatement,
+    pub(crate) alternative: Option<BlockStatement>,
 }
 
 impl<'a> Parse<'a> for IfExpr {

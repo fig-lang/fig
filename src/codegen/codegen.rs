@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use wasm_encoder::{
-    CodeSection, ConstExpr, DataSection, Function, FunctionSection, Instruction, MemorySection,
-    MemoryType, Module, TypeSection, ValType, TableSection, GlobalSection, ExportSection, ImportSection, ElementSection,
+    CodeSection, ConstExpr, DataSection, ElementSection, ExportSection, Function, FunctionSection,
+    GlobalSection, ImportSection, Instruction, MemorySection, MemoryType, Module, TableSection,
+    TypeSection, ValType,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, InfixExpr, Integer,
-        LetStatement, Program, ReturnStatement, Statement, StringExpr,
+        BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, IfExpr, InfixExpr,
+        Integer, LetStatement, Program, ReturnStatement, Statement, StringExpr,
     },
 };
 
@@ -89,6 +90,7 @@ impl<'a> Instructions<'a> for Token {
             Token::Minus => Ok(vec![Instruction::I32Sub]),
             Token::ForwardSlash => Ok(vec![Instruction::I32DivS]),
             Token::Asterisk => Ok(vec![Instruction::I32Mul]),
+            Token::Equal => Ok(vec![Instruction::I32Eq]),
 
             _ => todo!(),
         }
@@ -137,6 +139,7 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
             Expression::Call(call) => Ok(call.generate_instructions(gen)?),
             Expression::String(s) => Ok(s.generate_instructions(gen)?),
+            Expression::If(ifexpr) => Ok(ifexpr.generate_instructions(gen)?),
 
             x => panic!("{:?}", x),
         }
@@ -157,18 +160,22 @@ impl<'a> Instructions<'a> for Identifier {
 
 impl<'a> Instructions<'a> for LetStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // create the local and set the active local
+        let local_index = gen.local_manager.new_local(self.name.value.clone());
+
         let mut result: Vec<Instruction> = vec![];
         let let_value = self.value.generate_instructions(gen)?;
 
         result.extend(let_value);
 
         // create new local
-        let local_index = gen.local_manager.new_local(self.name.value.clone());
         gen.code_manager
             .current_locals
             .push(self.value_type.clone().try_into()?);
 
-        result.push(Instruction::LocalSet(local_index));
+        if !gen.local_manager.get_already_set() {
+            result.push(Instruction::LocalSet(local_index));
+        }
 
         Ok(result)
     }
@@ -188,6 +195,47 @@ impl<'a> Instructions<'a> for BlockStatement {
 impl<'a> Instructions<'a> for FunctionStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result = self.body.generate_instructions(gen)?;
+        result.push(Instruction::End);
+
+        Ok(result)
+    }
+}
+
+impl<'a> Instructions<'a> for IfExpr {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result = vec![];
+        let condition = self.condition.generate_instructions(gen)?;
+        result.extend(condition);
+
+        result.push(Instruction::If(wasm_encoder::BlockType::Empty));
+
+        let block = self.consequence.generate_instructions(gen)?;
+
+        result.extend(block);
+
+        // If we are in a let statement
+        if let Some(id) = gen.local_manager.get_active_local() {
+            result.push(Instruction::LocalSet(id.to_owned()));
+
+            gen.local_manager.already_set(true);
+        }
+
+        match &self.alternative {
+            Some(alt) => {
+                result.push(Instruction::Else);
+
+                let block = alt.generate_instructions(gen)?;
+
+                result.extend(block);
+
+                if let Some(id) = gen.local_manager.get_active_local() {
+                    result.push(Instruction::LocalSet(id.to_owned()));
+                }
+            }
+
+            None => {}
+        };
+
         result.push(Instruction::End);
 
         Ok(result)
@@ -230,7 +278,15 @@ impl<'a> Instructions<'a> for Statement {
 
             Statement::Expression(expr) => expr.generate_instructions(gen),
 
-            Statement::Let(var) => var.generate_instructions(gen),
+            Statement::Let(var) => {
+                let let_statement = var.generate_instructions(gen);
+
+                // Exit the let
+                gen.local_manager.exit_active_local();
+                gen.local_manager.already_set(false);
+
+                return let_statement;
+            }
             Statement::Return(ret) => ret.generate_instructions(gen),
 
             _ => todo!(),
@@ -299,6 +355,7 @@ impl Generator {
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
+        //TODO
         self.module.section(&self.type_manager.get_section());
         self.module.section(&ImportSection::new());
         self.module.section(&self.function_manager.get_section());
@@ -449,6 +506,18 @@ pub struct LocalManager {
 
     /// Index
     locals_index: u32,
+
+    /// The current active local
+    ///
+    /// Mostly used for return value of the if statement
+    /// to set to the active_local
+    active_local: Option<u32>,
+
+    /// Some times the let dont need to set
+    /// the expression to the local
+    ///
+    /// and its already seted
+    already_set: bool,
 }
 
 impl LocalManager {
@@ -457,6 +526,8 @@ impl LocalManager {
         Self {
             locals: HashMap::new(),
             locals_index: 0,
+            active_local: None,
+            already_set: false,
         }
     }
 
@@ -473,6 +544,22 @@ impl LocalManager {
         self.locals_index = 0;
     }
 
+    pub fn exit_active_local(&mut self) {
+        self.active_local = None;
+    }
+
+    pub fn get_active_local(&self) -> &Option<u32> {
+        &self.active_local
+    }
+
+    pub fn already_set(&mut self, new_value: bool) {
+        self.already_set = new_value;
+    }
+
+    pub fn get_already_set(&self) -> &bool {
+        &self.already_set
+    }
+
     /// Creates new local var
     ///
     /// and returns the index
@@ -480,6 +567,7 @@ impl LocalManager {
     pub fn new_local(&mut self, name: String) -> u32 {
         let index = self.locals_index;
         self.locals.insert(name, self.locals_index.clone());
+        self.active_local = Some(index);
 
         self.locals_index += 1;
 
