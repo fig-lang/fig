@@ -29,6 +29,7 @@ pub enum Statement {
     Block(BlockStatement),
     Function(FunctionStatement),
     Export(ExportStatement),
+    Loop(LoopStatement),
 }
 
 impl<'a> Parse<'a> for Statement {
@@ -40,8 +41,8 @@ impl<'a> Parse<'a> for Statement {
             Token::Function => Ok(Self::Function(FunctionStatement::parse(
                 parser, precedence,
             )?)),
-
             Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
+            Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
 
             _el => {
                 let expr = Self::Expression(Expression::parse(parser, Some(Precedence::Lowest))?);
@@ -150,6 +151,23 @@ impl<'a> Parse<'a> for ExportStatement {
         Ok(ExportStatement {
             value: Box::new(Statement::Function(function)),
         })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopStatement {
+    pub(crate) block: BlockStatement,
+}
+
+impl<'a> Parse<'a> for LoopStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // skip loop token
+        parser.next_token();
+
+        // parse block
+        let block = BlockStatement::parse(parser, precedence)?;
+
+        Ok(LoopStatement { block })
     }
 }
 
@@ -391,11 +409,11 @@ impl<'a> Parse<'a> for FunctionStatement {
         let params = Self::parse_function_params(parser)?;
 
         //println!("{}, {}", parser.current_token, parser.next_token);
-        let return_type = match parser.next_token.clone(){
+        let return_type = match parser.next_token.clone() {
             Token::Colon => {
                 parser.next_token();
                 Some(Type::parse(parser, None)?)
-            },
+            }
 
             _ => None,
         };

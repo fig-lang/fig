@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
 use wasm_encoder::{
-    CodeSection, ConstExpr, DataSection, ElementSection, ExportKind, ExportSection, Function,
-    FunctionSection, GlobalSection, ImportSection, Instruction, MemorySection, MemoryType, Module,
-    TableSection, TypeSection, ValType,
+    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, ExportKind, ExportSection,
+    Function, FunctionSection, GlobalSection, ImportSection, Instruction, MemorySection,
+    MemoryType, Module, TableSection, TypeSection, ValType,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
         BlockStatement, CallExpr, ExportStatement, Expression, FunctionStatement, Identifier,
-        IfExpr, InfixExpr, Integer, LetStatement, Program, ReturnStatement, Statement, StringExpr,
+        IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement,
+        Statement, StringExpr,
     },
 };
 
@@ -125,6 +126,20 @@ impl<'a> Instructions<'a> for InfixExpr {
 impl<'a> Instructions<'a> for Integer {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         Ok(vec![Instruction::I32Const(self.value)])
+    }
+}
+
+impl<'a> Instructions<'a> for LoopStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result: Vec<Instruction> = vec![];
+        result.push(Instruction::Loop(BlockType::Empty));
+
+        let block = self.block.generate_instructions(gen)?;
+        result.extend(block);
+
+        result.push(Instruction::End);
+
+        Ok(result)
     }
 }
 
@@ -314,6 +329,7 @@ impl<'a> Instructions<'a> for Statement {
             }
             Statement::Return(ret) => ret.generate_instructions(gen),
             Statement::Export(export) => export.generate_instructions(gen),
+            Statement::Loop(l) => l.generate_instructions(gen),
 
             _ => todo!(),
         }
