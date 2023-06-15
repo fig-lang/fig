@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use wasm_encoder::{
-    CodeSection, ConstExpr, DataSection, ElementSection, ExportSection, Function, FunctionSection,
-    GlobalSection, ImportSection, Instruction, MemorySection, MemoryType, Module, TableSection,
-    TypeSection, ValType,
+    CodeSection, ConstExpr, DataSection, ElementSection, ExportKind, ExportSection, Function,
+    FunctionSection, GlobalSection, ImportSection, Instruction, MemorySection, MemoryType, Module,
+    TableSection, TypeSection, ValType,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, CallExpr, Expression, FunctionStatement, Identifier, IfExpr, InfixExpr,
-        Integer, LetStatement, Program, ReturnStatement, Statement, StringExpr,
+        BlockStatement, CallExpr, ExportStatement, Expression, FunctionStatement, Identifier,
+        IfExpr, InfixExpr, Integer, LetStatement, Program, ReturnStatement, Statement, StringExpr,
     },
 };
 
@@ -36,7 +36,13 @@ impl WasmTypes for FunctionStatement {
             param_type.push(param.1.clone().try_into()?);
         }
 
-        Ok((param_type, vec![ValType::I32]))
+        let return_type: Vec<ValType> = match self.return_type.clone() {
+            Some(ret_type) => vec![ret_type.try_into()?],
+
+            None => vec![],
+        };
+
+        Ok((param_type, return_type))
     }
 }
 
@@ -85,12 +91,16 @@ impl<'a> Instructions<'a> for StringExpr {
 
 impl<'a> Instructions<'a> for Token {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // Todo check type
         match self {
             Token::Plus => Ok(vec![Instruction::I32Add]),
             Token::Minus => Ok(vec![Instruction::I32Sub]),
             Token::ForwardSlash => Ok(vec![Instruction::I32DivS]),
             Token::Asterisk => Ok(vec![Instruction::I32Mul]),
             Token::Equal => Ok(vec![Instruction::I32Eq]),
+            Token::NotEqual => Ok(vec![Instruction::I32Ne]),
+            Token::LessThan => Ok(vec![Instruction::I32LeS]),
+            Token::GreaterThan => Ok(vec![Instruction::I32GtS]),
 
             _ => todo!(),
         }
@@ -115,6 +125,20 @@ impl<'a> Instructions<'a> for InfixExpr {
 impl<'a> Instructions<'a> for Integer {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         Ok(vec![Instruction::I32Const(self.value)])
+    }
+}
+
+impl<'a> Instructions<'a> for ExportStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let function_instructions = self.value.generate_instructions(gen)?;
+        let Some(current_function) = gen.function_manager.current_function() else {
+            return Err(CompilerError::NotDefined("Function not defined!".to_string()));
+        };
+
+        gen.export_manager
+            .export_function(&current_function.name, current_function.id);
+
+        Ok(function_instructions)
     }
 }
 
@@ -289,6 +313,7 @@ impl<'a> Instructions<'a> for Statement {
                 return let_statement;
             }
             Statement::Return(ret) => ret.generate_instructions(gen),
+            Statement::Export(export) => export.generate_instructions(gen),
 
             _ => todo!(),
         }
@@ -325,6 +350,8 @@ pub struct Generator {
     local_manager: LocalManager,
 
     memory_manager: MemoryManager,
+
+    export_manager: ExportManager,
 }
 
 impl Generator {
@@ -343,6 +370,7 @@ impl Generator {
             code_manager: CodeManager::new(),
             function_manager: FunctionManager::new(),
             local_manager: LocalManager::new(),
+            export_manager: ExportManager::new(),
             memory_manager: MemoryManager::new(mem),
         }
     }
@@ -366,7 +394,7 @@ impl Generator {
 
         self.module.section(mem_section);
         self.module.section(&GlobalSection::new());
-        self.module.section(&ExportSection::new());
+        self.module.section(&self.export_manager.get_sections());
         self.module.section(&ElementSection::new());
 
         self.module.section(&self.code_manager.get_section());
@@ -410,6 +438,7 @@ impl TypeManager {
 
 #[derive(Debug, Clone)]
 pub struct FunctionData {
+    name: String,
     params: Vec<FunctionParam>,
     id: u32,
 }
@@ -448,6 +477,7 @@ impl FunctionManager {
 
     pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
         let new_fn = FunctionData {
+            name: name.clone(),
             params,
             id: self.functions_index,
         };
@@ -612,5 +642,25 @@ impl MemoryManager {
 
     pub fn get_sections(&self) -> (MemorySection, DataSection) {
         (self.memory_section.clone(), self.data_section.clone())
+    }
+}
+
+pub struct ExportManager {
+    section: ExportSection,
+}
+
+impl ExportManager {
+    pub fn new() -> Self {
+        Self {
+            section: ExportSection::new(),
+        }
+    }
+
+    pub fn export_function(&mut self, name: &String, id: u32) {
+        self.section.export(name, ExportKind::Func, id);
+    }
+
+    pub fn get_sections(&self) -> ExportSection {
+        self.section.clone()
     }
 }

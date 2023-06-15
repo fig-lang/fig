@@ -9,6 +9,8 @@ impl<'a> Parse<'a> for Type {
 
         let type_ident = Identifier::parse(parser, precedence)?;
 
+        //parser.next_token();
+
         let type_value = Type::from(type_ident.value.clone());
 
         if type_value == Type::Unknown {
@@ -26,6 +28,7 @@ pub enum Statement {
     Expression(Expression),
     Block(BlockStatement),
     Function(FunctionStatement),
+    Export(ExportStatement),
 }
 
 impl<'a> Parse<'a> for Statement {
@@ -37,6 +40,8 @@ impl<'a> Parse<'a> for Statement {
             Token::Function => Ok(Self::Function(FunctionStatement::parse(
                 parser, precedence,
             )?)),
+
+            Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
 
             _el => {
                 let expr = Self::Expression(Expression::parse(parser, Some(Precedence::Lowest))?);
@@ -125,6 +130,26 @@ impl<'a> Parse<'a> for ReturnStatement {
         }
 
         return Ok(ReturnStatement { return_value });
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportStatement {
+    pub(crate) value: Box<Statement>,
+}
+
+impl<'a> Parse<'a> for ExportStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // Get the next value
+        parser.next_token();
+
+        // We assume the next token is function
+        // We just support function export for now
+        let function = FunctionStatement::parse(parser, precedence)?;
+
+        Ok(ExportStatement {
+            value: Box::new(Statement::Function(function)),
+        })
     }
 }
 
@@ -315,6 +340,7 @@ pub struct FunctionStatement {
     pub(crate) name: Identifier,
     pub(crate) params: Vec<(Identifier, Type)>,
     pub(crate) body: BlockStatement,
+    pub(crate) return_type: Option<Type>,
 }
 
 impl FunctionStatement {
@@ -364,11 +390,26 @@ impl<'a> Parse<'a> for FunctionStatement {
 
         let params = Self::parse_function_params(parser)?;
 
+        //println!("{}, {}", parser.current_token, parser.next_token);
+        let return_type = match parser.next_token.clone(){
+            Token::Colon => {
+                parser.next_token();
+                Some(Type::parse(parser, None)?)
+            },
+
+            _ => None,
+        };
+
         parser.expect_peek(Token::LSquirly)?;
 
         let body = BlockStatement::parse(parser, precedence)?;
 
-        Ok(FunctionStatement { name, params, body })
+        Ok(FunctionStatement {
+            name,
+            params,
+            body,
+            return_type,
+        })
     }
 }
 

@@ -77,6 +77,7 @@ impl Lexer {
                         "true" => Token::True,
                         "return" => Token::Return,
                         "else" => Token::Else,
+                        "export" => Token::Export,
                         _ => Token::Ident(ident),
                     });
                 }

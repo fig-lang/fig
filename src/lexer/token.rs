@@ -29,6 +29,8 @@ pub enum Token {
 
     Function,
     Let,
+    
+    Export,
 
     If,
     Else,
@@ -65,8 +67,8 @@ impl Display for Token {
             Colon => write!(f, ":"),
             Lparen => write!(f, "("),
             Rparen => write!(f, ")"),
-            LSquirly => write!(f, "{}", "{"),
-            RSquirly => write!(f, "{}", "}"),
+            LSquirly => write!(f, "l squirly"),
+            RSquirly => write!(f, "r squirly"),
 
             Function => write!(f, "fn"),
             Let => write!(f, "let"),
@@ -76,6 +78,7 @@ impl Display for Token {
             Return => write!(f, "return"),
             True => write!(f, "true"),
             False => write!(f, "false"),
+            Export => write!(f, "export"),
 
             String(s) => write!(f, "'{}'", s),
         }
