@@ -162,6 +162,7 @@ impl<'a> Instructions<'a> for LetStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         // create the local and set the active local
         let local_index = gen.local_manager.new_local(self.name.value.clone());
+        gen.local_manager.set_active_local(local_index);
 
         let mut result: Vec<Instruction> = vec![];
         let let_value = self.value.generate_instructions(gen)?;
@@ -552,6 +553,10 @@ impl LocalManager {
         &self.active_local
     }
 
+    pub fn set_active_local(&mut self, local_id: u32) {
+        self.active_local = Some(local_id);
+    }
+
     pub fn already_set(&mut self, new_value: bool) {
         self.already_set = new_value;
     }
@@ -567,7 +572,6 @@ impl LocalManager {
     pub fn new_local(&mut self, name: String) -> u32 {
         let index = self.locals_index;
         self.locals.insert(name, self.locals_index.clone());
-        self.active_local = Some(index);
 
         self.locals_index += 1;
 
