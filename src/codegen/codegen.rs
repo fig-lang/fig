@@ -11,7 +11,7 @@ use crate::{
     parser::ast::{
         BlockStatement, CallExpr, ExportStatement, Expression, FunctionStatement, Identifier,
         IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement,
-        Statement, StringExpr,
+        SetStatement, Statement, StringExpr,
     },
 };
 
@@ -140,6 +140,24 @@ impl<'a> Instructions<'a> for LoopStatement {
         result.push(Instruction::End);
 
         Ok(result)
+    }
+}
+
+impl<'a> Instructions<'a> for SetStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut expression = self.expression.generate_instructions(gen)?;
+
+        let Some(var_id) = gen.local_manager.get_local_index(&self.variable.value) else {
+            return Err(
+                CompilerError::NotDefined(
+                    format!("Variable with name {} is not defined!", self.variable.value)
+                )
+            );
+        };
+
+        expression.push(Instruction::LocalSet(var_id.to_owned()));
+
+        Ok(expression)
     }
 }
 
@@ -330,6 +348,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Return(ret) => ret.generate_instructions(gen),
             Statement::Export(export) => export.generate_instructions(gen),
             Statement::Loop(l) => l.generate_instructions(gen),
+            Statement::Set(set) => set.generate_instructions(gen),
 
             _ => todo!(),
         }

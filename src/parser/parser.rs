@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
         if !self.next_token_is(expected.clone()) {
             return Err(ParserError::expected(
                 expected.to_string(),
-                expected.to_string(),
+                self.next_token.to_string(),
             ));
         }
 

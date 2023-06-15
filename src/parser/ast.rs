@@ -30,6 +30,18 @@ pub enum Statement {
     Function(FunctionStatement),
     Export(ExportStatement),
     Loop(LoopStatement),
+    Set(SetStatement),
+}
+
+impl Statement {
+    fn parse_expression<'a>(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        let expr = Self::Expression(Expression::parse(parser, precedence)?);
+
+        if parser.next_token_is(Token::Semicolon) {
+            parser.next_token();
+        }
+        Ok(expr)
+    }
 }
 
 impl<'a> Parse<'a> for Statement {
@@ -43,15 +55,15 @@ impl<'a> Parse<'a> for Statement {
             )?)),
             Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
             Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
-
-            _el => {
-                let expr = Self::Expression(Expression::parse(parser, Some(Precedence::Lowest))?);
-
-                if parser.next_token_is(Token::Semicolon) {
-                    parser.next_token();
+            Token::Ident(_) => {
+                if parser.next_token_is(Token::Assign) {
+                    Ok(Self::Set(SetStatement::parse(parser, precedence)?))
+                } else {
+                    Self::parse_expression(parser, Some(Precedence::Lowest))
                 }
-                Ok(expr)
             }
+
+            _el => Self::parse_expression(parser, Some(Precedence::Lowest)),
         }
     }
 }
@@ -168,6 +180,38 @@ impl<'a> Parse<'a> for LoopStatement {
         let block = BlockStatement::parse(parser, precedence)?;
 
         Ok(LoopStatement { block })
+    }
+}
+
+// for example
+// let x = 1;
+//
+// This is the set statement
+// x = 5;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SetStatement {
+    pub(crate) variable: Identifier,
+    pub(crate) expression: Expression,
+}
+
+impl<'a> Parse<'a> for SetStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // so we want an left_expr
+        // the left_expr must be an identifier which is the variable name
+        let variable = Identifier::parse(parser, None)?;
+
+        parser.expect_peek(Token::Assign)?;
+
+        parser.next_token();
+
+        let expression = Expression::parse(parser, precedence)?;
+
+        parser.expect_peek(Token::Semicolon)?;
+
+        Ok(SetStatement {
+            variable,
+            expression,
+        })
     }
 }
 
