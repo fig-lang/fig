@@ -238,15 +238,14 @@ pub struct ExternalBody {
 impl<'a> Parse<'a> for ExternalBody {
     fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
         let mut function_types = vec![];
-
-        while !parser.next_token_is(Token::RSquirly) {
+        while !parser.current_token_is(Token::RSquirly) && !parser.current_token_is(Token::Eof) {
             let fn_type = FunctionMeta::parse(parser, None)?;
 
             function_types.push(fn_type);
+
+            parser.next_token();
             parser.next_token();
         }
-
-        parser.expect_peek(Token::RSquirly)?;
 
         Ok(ExternalBody { function_types })
     }
