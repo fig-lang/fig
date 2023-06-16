@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
 use wasm_encoder::{
-    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, ExportKind, ExportSection,
-    Function, FunctionSection, GlobalSection, ImportSection, Instruction, MemorySection,
-    MemoryType, Module, TableSection, TypeSection, ValType,
+    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
+    ExportSection, Function, FunctionSection, GlobalSection, ImportSection, Instruction,
+    MemorySection, MemoryType, Module, TableSection, TypeSection, ValType,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BreakStatement, CallExpr, ExportStatement, Expression, FunctionStatement,
-        Identifier, IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program,
-        ReturnStatement, SetStatement, Statement, StringExpr,
+        BlockStatement, BreakStatement, CallExpr, ExportStatement, Expression, ExternalStatement,
+        FunctionMeta, FunctionStatement, Identifier, IfExpr, InfixExpr, Integer, LetStatement,
+        LoopStatement, Program, ReturnStatement, SetStatement, Statement, StringExpr,
     },
 };
 
@@ -27,17 +27,17 @@ pub trait WasmTypes {
         Self: Sized;
 }
 
-impl WasmTypes for FunctionStatement {
+impl WasmTypes for FunctionMeta {
     type Output = CResult<(Vec<ValType>, Vec<ValType>)>;
 
     fn types(&self) -> Self::Output {
         let mut param_type: Vec<ValType> = vec![];
 
-        for param in &self.meta.params {
+        for param in &self.params {
             param_type.push(param.1.clone().try_into()?);
         }
 
-        let return_type: Vec<ValType> = match self.meta.return_type.clone() {
+        let return_type: Vec<ValType> = match self.return_type.clone() {
             Some(ret_type) => vec![ret_type.try_into()?],
 
             None => vec![],
@@ -126,6 +126,38 @@ impl<'a> Instructions<'a> for InfixExpr {
 impl<'a> Instructions<'a> for Integer {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         Ok(vec![Instruction::I32Const(self.value)])
+    }
+}
+
+impl<'a> Instructions<'a> for ExternalStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        for func in &self.body.function_types {
+            let (param_types, result_type) = func.types()?;
+            let type_id = gen
+                .type_manager
+                .new_function_type(param_types.clone(), result_type);
+
+            let params = param_types
+                .into_iter()
+                .zip(func.params.clone())
+                .enumerate()
+                .map(|(i, (t, param))| FunctionParam {
+                    id: i as u32,
+                    param_type: t,
+                    name: param.0.value,
+                })
+                .collect::<Vec<FunctionParam>>();
+
+            gen.function_manager
+                .new_external_function(func.name.value.clone(), params);
+
+            gen.import_manager.import_func(
+                &self.module.value,
+                &func.name.value,
+                EntityType::Function(type_id),
+            );
+        }
+        Ok(vec![])
     }
 }
 
@@ -316,7 +348,7 @@ impl<'a> Instructions<'a> for Statement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         match self {
             Statement::Function(func) => {
-                let types = func.types()?;
+                let types = func.meta.types()?;
                 let type_index = gen.type_manager.new_function_type(types.0.clone(), types.1);
 
                 let params = types
@@ -362,6 +394,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Loop(l) => l.generate_instructions(gen),
             Statement::Set(set) => set.generate_instructions(gen),
             Statement::Break(br) => br.generate_instructions(gen),
+            Statement::External(external) => external.generate_instructions(gen),
 
             _ => todo!(),
         }
@@ -400,6 +433,8 @@ pub struct Generator {
     memory_manager: MemoryManager,
 
     export_manager: ExportManager,
+
+    import_manager: ImportManager,
 }
 
 impl Generator {
@@ -419,6 +454,7 @@ impl Generator {
             function_manager: FunctionManager::new(),
             local_manager: LocalManager::new(),
             export_manager: ExportManager::new(),
+            import_manager: ImportManager::new(),
             memory_manager: MemoryManager::new(mem),
         }
     }
@@ -434,7 +470,7 @@ impl Generator {
     pub fn generate(&mut self) -> Vec<u8> {
         //TODO
         self.module.section(&self.type_manager.get_section());
-        self.module.section(&ImportSection::new());
+        self.module.section(&self.import_manager.get_sections());
         self.module.section(&self.function_manager.get_section());
         self.module.section(&TableSection::new());
 
@@ -521,6 +557,21 @@ impl FunctionManager {
 
     pub fn get_function(&self, function_name: &String) -> Option<&FunctionData> {
         self.functions.get(function_name)
+    }
+
+    pub fn new_external_function(
+        &mut self,
+        name: String,
+        params: Vec<FunctionParam>,
+    ) {
+        let new_fn = FunctionData {
+            name: name.clone(),
+            params,
+            id: self.functions_index,
+        };
+
+        self.functions.insert(name, new_fn.clone());
+        self.functions_index += 1;
     }
 
     pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
@@ -709,6 +760,31 @@ impl ExportManager {
     }
 
     pub fn get_sections(&self) -> ExportSection {
+        self.section.clone()
+    }
+}
+
+pub struct ImportManager {
+    section: ImportSection,
+}
+
+impl ImportManager {
+    pub fn new() -> Self {
+        Self {
+            section: ImportSection::new(),
+        }
+    }
+
+    pub fn import_func(
+        &mut self,
+        module: &String,
+        function_name: &String,
+        function_type: EntityType,
+    ) {
+        self.section.import(module, function_name, function_type);
+    }
+
+    pub fn get_sections(&self) -> ImportSection {
         self.section.clone()
     }
 }

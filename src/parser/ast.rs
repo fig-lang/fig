@@ -59,6 +59,7 @@ impl<'a> Parse<'a> for Statement {
             Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
             Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
             Token::Break => Ok(Self::Break(BreakStatement::parse(parser, None)?)),
+            Token::External => Ok(Self::External(ExternalStatement::parse(parser, None)?)),
             Token::Ident(_) => {
                 if parser.next_token_is(Token::Assign) {
                     Ok(Self::Set(SetStatement::parse(parser, precedence)?))
@@ -230,20 +231,48 @@ impl<'a> Parse<'a> for BreakStatement {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalBody {
+    pub(crate) function_types: Vec<FunctionMeta>,
+}
+
+impl<'a> Parse<'a> for ExternalBody {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        let mut function_types = vec![];
+
+        while !parser.next_token_is(Token::RSquirly) {
+            let fn_type = FunctionMeta::parse(parser, None)?;
+
+            function_types.push(fn_type);
+            parser.next_token();
+        }
+
+        parser.expect_peek(Token::RSquirly)?;
+
+        Ok(ExternalBody { function_types })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternalStatement {
-    module: Identifier,
-    function: FunctionStatement,
+    pub(crate) module: Identifier,
+    pub(crate) body: ExternalBody,
 }
 
 impl<'a> Parse<'a> for ExternalStatement {
-    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
         // skip external token
         parser.next_token();
 
         // Get the module name
-        let module_name = Identifier::parse(parser, None)?;
+        let module = Identifier::parse(parser, None)?;
 
-        todo!()
+        parser.expect_peek(Token::LSquirly)?;
+
+        parser.next_token();
+
+        let body = ExternalBody::parse(parser, None)?;
+
+        Ok(ExternalStatement { module, body })
     }
 }
 
@@ -904,7 +933,7 @@ mod tests {
 
     #[test]
     fn test_function_expr_with_empty_args() {
-        let source = r#"fn some() {
+        let source = r#"fn some(): i32 {
             1;
         }"#;
 
@@ -913,10 +942,13 @@ mod tests {
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
         let expected_statements = [Statement::Function(FunctionStatement {
-            name: Identifier {
-                value: "some".to_string(),
+            meta: FunctionMeta {
+                name: Identifier {
+                    value: "some".to_string(),
+                },
+                params: vec![],
+                return_type: Some(Type::I32),
             },
-            params: vec![],
             body: BlockStatement {
                 statements: vec![Statement::Expression(Expression::Integer(Integer {
                     value: 1,
@@ -938,15 +970,18 @@ mod tests {
         let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
 
         let expected_statements = [Statement::Function(FunctionStatement {
-            name: Identifier {
-                value: "some".to_string(),
-            },
-            params: vec![(
-                Identifier {
-                    value: "x".to_string(),
+            meta: FunctionMeta {
+                name: Identifier {
+                    value: "some".to_string(),
                 },
-                Type::I32,
-            )],
+                params: vec![(
+                    Identifier {
+                        value: "x".to_string(),
+                    },
+                    Type::I32,
+                )],
+                return_type: None,
+            },
             body: BlockStatement { statements: vec![] },
         })];
 
