@@ -11,7 +11,7 @@ use crate::{
     parser::ast::{
         BlockStatement, CallExpr, ExportStatement, Expression, FunctionStatement, Identifier,
         IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement,
-        SetStatement, Statement, StringExpr,
+        SetStatement, Statement, StringExpr, BreakStatement,
     },
 };
 
@@ -132,14 +132,26 @@ impl<'a> Instructions<'a> for Integer {
 impl<'a> Instructions<'a> for LoopStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
+        result.push(Instruction::Block(BlockType::Empty));
+
         result.push(Instruction::Loop(BlockType::Empty));
 
         let block = self.block.generate_instructions(gen)?;
         result.extend(block);
 
+        result.push(Instruction::Br(0));
+        result.push(Instruction::End);
         result.push(Instruction::End);
 
         Ok(result)
+    }
+}
+
+impl<'a> Instructions<'a> for BreakStatement {
+    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // TODO: not fix value
+        // need a new manager :}
+        Ok(vec![Instruction::Br(2)])
     }
 }
 
@@ -349,6 +361,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Export(export) => export.generate_instructions(gen),
             Statement::Loop(l) => l.generate_instructions(gen),
             Statement::Set(set) => set.generate_instructions(gen),
+            Statement::Break(br) => br.generate_instructions(gen),
 
             _ => todo!(),
         }

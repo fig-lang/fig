@@ -31,6 +31,7 @@ pub enum Token {
     Let,
     Loop,
     Export,
+    Break,
 
     If,
     Else,
@@ -80,6 +81,7 @@ impl Display for Token {
             False => write!(f, "false"),
             Export => write!(f, "export"),
             Loop => write!(f, "loop"),
+            Break => write!(f, "break"),
 
             String(s) => write!(f, "'{}'", s),
         }

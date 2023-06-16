@@ -9,8 +9,6 @@ impl<'a> Parse<'a> for Type {
 
         let type_ident = Identifier::parse(parser, precedence)?;
 
-        //parser.next_token();
-
         let type_value = Type::from(type_ident.value.clone());
 
         if type_value == Type::Unknown {
@@ -31,10 +29,14 @@ pub enum Statement {
     Export(ExportStatement),
     Loop(LoopStatement),
     Set(SetStatement),
+    Break(BreakStatement),
 }
 
 impl Statement {
-    fn parse_expression<'a>(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+    fn parse_expression<'a>(
+        parser: &mut Parser<'a>,
+        precedence: Option<Precedence>,
+    ) -> PResult<Self> {
         let expr = Self::Expression(Expression::parse(parser, precedence)?);
 
         if parser.next_token_is(Token::Semicolon) {
@@ -55,6 +57,7 @@ impl<'a> Parse<'a> for Statement {
             )?)),
             Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
             Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
+            Token::Break => Ok(Self::Break(BreakStatement::parse(parser, None)?)),
             Token::Ident(_) => {
                 if parser.next_token_is(Token::Assign) {
                     Ok(Self::Set(SetStatement::parse(parser, precedence)?))
@@ -212,6 +215,16 @@ impl<'a> Parse<'a> for SetStatement {
             variable,
             expression,
         })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BreakStatement;
+
+impl<'a> Parse<'a> for BreakStatement {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        parser.expect_peek(Token::Semicolon)?;
+        Ok(BreakStatement)
     }
 }
 

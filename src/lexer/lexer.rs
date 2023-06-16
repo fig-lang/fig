@@ -79,6 +79,7 @@ impl Lexer {
                         "else" => Token::Else,
                         "export" => Token::Export,
                         "loop" => Token::Loop,
+                        "break" => Token::Break,
                         _ => Token::Ident(ident),
                     });
                 }
