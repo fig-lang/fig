@@ -9,9 +9,9 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, CallExpr, ExportStatement, Expression, FunctionStatement, Identifier,
-        IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement,
-        SetStatement, Statement, StringExpr, BreakStatement,
+        BlockStatement, BreakStatement, CallExpr, ExportStatement, Expression, FunctionStatement,
+        Identifier, IfExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program,
+        ReturnStatement, SetStatement, Statement, StringExpr,
     },
 };
 
@@ -33,11 +33,11 @@ impl WasmTypes for FunctionStatement {
     fn types(&self) -> Self::Output {
         let mut param_type: Vec<ValType> = vec![];
 
-        for param in &self.params {
+        for param in &self.meta.params {
             param_type.push(param.1.clone().try_into()?);
         }
 
-        let return_type: Vec<ValType> = match self.return_type.clone() {
+        let return_type: Vec<ValType> = match self.meta.return_type.clone() {
             Some(ret_type) => vec![ret_type.try_into()?],
 
             None => vec![],
@@ -322,7 +322,7 @@ impl<'a> Instructions<'a> for Statement {
                 let params = types
                     .0
                     .into_iter()
-                    .zip(func.params.clone())
+                    .zip(func.meta.params.clone())
                     .enumerate()
                     .map(|(i, (t, param))| FunctionParam {
                         id: i as u32,
@@ -331,12 +331,12 @@ impl<'a> Instructions<'a> for Statement {
                     })
                     .collect::<Vec<FunctionParam>>();
 
-                for param in &func.params {
+                for param in &func.meta.params {
                     gen.local_manager.new_local(param.0.value.to_owned());
                 }
 
                 gen.function_manager
-                    .new_function(type_index, func.name.value.clone(), params);
+                    .new_function(type_index, func.meta.name.value.clone(), params);
 
                 let block = func.generate_instructions(gen)?;
                 gen.code_manager.new_function_code(block);

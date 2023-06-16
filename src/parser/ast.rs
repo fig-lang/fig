@@ -30,6 +30,7 @@ pub enum Statement {
     Loop(LoopStatement),
     Set(SetStatement),
     Break(BreakStatement),
+    External(ExternalStatement),
 }
 
 impl Statement {
@@ -229,6 +230,24 @@ impl<'a> Parse<'a> for BreakStatement {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalStatement {
+    module: Identifier,
+    function: FunctionStatement,
+}
+
+impl<'a> Parse<'a> for ExternalStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // skip external token
+        parser.next_token();
+
+        // Get the module name
+        let module_name = Identifier::parse(parser, None)?;
+
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression {
     Identifier(Identifier),
     Integer(Integer),
@@ -411,14 +430,13 @@ impl<'a> Parse<'a> for IfExpr {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FunctionStatement {
+pub struct FunctionMeta {
     pub(crate) name: Identifier,
     pub(crate) params: Vec<(Identifier, Type)>,
-    pub(crate) body: BlockStatement,
     pub(crate) return_type: Option<Type>,
 }
 
-impl FunctionStatement {
+impl FunctionMeta {
     fn parse_function_params<'a>(parser: &mut Parser<'a>) -> PResult<Vec<(Identifier, Type)>> {
         let mut params: Vec<(Identifier, Type)> = vec![];
 
@@ -455,7 +473,7 @@ impl FunctionStatement {
     }
 }
 
-impl<'a> Parse<'a> for FunctionStatement {
+impl<'a> Parse<'a> for FunctionMeta {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         parser.next_token();
 
@@ -465,7 +483,6 @@ impl<'a> Parse<'a> for FunctionStatement {
 
         let params = Self::parse_function_params(parser)?;
 
-        //println!("{}, {}", parser.current_token, parser.next_token);
         let return_type = match parser.next_token.clone() {
             Token::Colon => {
                 parser.next_token();
@@ -475,16 +492,29 @@ impl<'a> Parse<'a> for FunctionStatement {
             _ => None,
         };
 
+        Ok(FunctionMeta {
+            name,
+            params,
+            return_type,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionStatement {
+    pub(crate) meta: FunctionMeta,
+    pub(crate) body: BlockStatement,
+}
+
+impl<'a> Parse<'a> for FunctionStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        let meta = FunctionMeta::parse(parser, None)?;
+
         parser.expect_peek(Token::LSquirly)?;
 
         let body = BlockStatement::parse(parser, precedence)?;
 
-        Ok(FunctionStatement {
-            name,
-            params,
-            body,
-            return_type,
-        })
+        Ok(FunctionStatement { meta, body })
     }
 }
 

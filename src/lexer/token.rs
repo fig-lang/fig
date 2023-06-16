@@ -28,6 +28,7 @@ pub enum Token {
     RSquirly,
 
     Function,
+    External,
     Let,
     Loop,
     Export,
@@ -82,6 +83,7 @@ impl Display for Token {
             Export => write!(f, "export"),
             Loop => write!(f, "loop"),
             Break => write!(f, "break"),
+            External => write!(f, "external"),
 
             String(s) => write!(f, "'{}'", s),
         }
