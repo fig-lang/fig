@@ -1,16 +1,11 @@
-external js {
-    fn log(input: i32);
+external console {
     fn log_str(ptr: i32);
 }
 
-external env {
-    fn sum(x: i32, y: i32): i32;
+external element {
+    fn create(el: i32, text: i32);
 }
 
 export fn main() {
-    let x: i32 = "Hello World";
-    let y: i32 = "Ok then";
-
-    log_str(x);
-    log_str(y);
+    create("h1", "HelloWorld");
 }

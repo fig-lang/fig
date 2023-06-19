@@ -23,7 +23,7 @@ const read_chars = (values, ptr) => {
 const string_from_chars = (chars) =>
     chars.map(char => String.fromCharCode(char)).join("");
 
-const $log_str = (mem, ptr) => console.log(string_from_chars(read_chars(mem, ptr)));
+const log_str = (mem, ptr) => console.log(string_from_chars(read_chars(mem, ptr)));
 
 class Reader {
     mem = null;
@@ -44,12 +44,18 @@ class Reader {
 (async () => {
     const reader = new Reader();
     const imports = {
-        js: {
-            log: (x) => console.log(x),
-            log_str: (ptr) => $log_str(reader.get_mem(), ptr),
+        console: {
+            log_str: (ptr) => log_str(reader.get_mem(), ptr),
         },
-        env: {
-            sum: (x, y) => x + y
+        element: {
+            // element ptr and text ptr
+            create: (el, text) => {
+                const element = string_from_chars(read_chars(reader.get_mem(), el));
+                const child = document.createElement(element);
+                const element_body = string_from_chars(read_chars(reader.get_mem(), text));
+                child.innerText = element_body;
+                window.document.body.appendChild(child);
+            }
         }
     };
 
