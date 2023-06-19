@@ -40,7 +40,9 @@ fn main() {
     generator.visit().unwrap();
 
     let buf = generator.generate();
+    
+    let output_path = args.next();
 
-    let mut file = File::create("out.wasm").unwrap();
+    let mut file = File::create(PathBuf::from(output_path.unwrap())).unwrap();
     file.write(&buf).unwrap();
 }

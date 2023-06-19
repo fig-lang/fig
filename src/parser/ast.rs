@@ -237,13 +237,14 @@ pub struct ExternalBody {
 
 impl<'a> Parse<'a> for ExternalBody {
     fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        parser.next_token();
         let mut function_types = vec![];
         while !parser.current_token_is(Token::RSquirly) && !parser.current_token_is(Token::Eof) {
-            let fn_type = FunctionMeta::parse(parser, None)?;
+            let fn_type = FunctionMeta::parse(parser, _precedence.clone())?;
 
             function_types.push(fn_type);
 
-            parser.next_token();
+            parser.expect_peek(Token::Semicolon)?;
             parser.next_token();
         }
 
@@ -267,9 +268,9 @@ impl<'a> Parse<'a> for ExternalStatement {
 
         parser.expect_peek(Token::LSquirly)?;
 
-        parser.next_token();
-
         let body = ExternalBody::parse(parser, None)?;
+
+        //parser.expect_peek(Token::RSquirly)?;
 
         Ok(ExternalStatement { module, body })
     }
@@ -294,6 +295,7 @@ impl<'a> Parse<'a> for Expression {
             Token::Ident(_) => {
                 Expression::Identifier(Identifier::parse(parser, precedence.clone())?)
             }
+
             Token::Minus | Token::Bang => {
                 Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?)
             }
@@ -519,6 +521,8 @@ impl<'a> Parse<'a> for FunctionMeta {
 
             _ => None,
         };
+
+        //parser.next_token();
 
         Ok(FunctionMeta {
             name,
