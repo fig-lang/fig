@@ -1,0 +1,11 @@
+external js {
+    fn log(input: i32);
+}
+
+external env {
+    fn sum(x: i32, y: i32): i32;
+}
+
+export fn main() {
+    log(sum(1, 10));
+}
