@@ -1,5 +1,6 @@
 external js {
     fn log(input: i32);
+    fn log_str(ptr: i32);
 }
 
 external env {
@@ -7,5 +8,9 @@ external env {
 }
 
 export fn main() {
-    log(sum(1, 10));
+    let x: i32 = "Hello World";
+    let y: i32 = "Ok then";
+
+    log_str(x);
+    log_str(y);
 }

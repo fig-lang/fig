@@ -83,10 +83,11 @@ impl<'a> Instructions<'a> for StringExpr {
         let mut string = self.string.to_owned();
         string.push('\0');
 
-        gen.memory_manager
+        let ptr = gen
+            .memory_manager
             .alloc(size as i32, string.as_bytes().to_vec());
 
-        Ok(vec![Instruction::I32Const(1)])
+        Ok(vec![Instruction::I32Const(ptr)])
     }
 }
 
@@ -468,6 +469,9 @@ impl Generator {
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
+        // export memory
+        self.export_manager.export_memory("memory", 0);
+
         //TODO
         self.module.section(&self.type_manager.get_section());
         self.module.section(&self.import_manager.get_sections());
@@ -559,11 +563,7 @@ impl FunctionManager {
         self.functions.get(function_name)
     }
 
-    pub fn new_external_function(
-        &mut self,
-        name: String,
-        params: Vec<FunctionParam>,
-    ) {
+    pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
         let new_fn = FunctionData {
             name: name.clone(),
             params,
@@ -727,16 +727,20 @@ impl MemoryManager {
         }
     }
 
-    pub fn alloc<D>(&mut self, size: i32, data: D)
+    /// Returns pointer to the data
+    pub fn alloc<D>(&mut self, size: i32, data: D) -> i32
     where
         D: IntoIterator<Item = u8>,
         D::IntoIter: ExactSizeIterator,
     {
-        let offset = ConstExpr::i32_const(self.offset as i32);
+        let ptr = self.offset;
+        let offset = ConstExpr::i32_const(ptr);
 
         self.data_section.active(0, &offset, data);
 
         self.offset += size;
+
+        ptr
     }
 
     pub fn get_sections(&self) -> (MemorySection, DataSection) {
@@ -753,6 +757,10 @@ impl ExportManager {
         Self {
             section: ExportSection::new(),
         }
+    }
+
+    pub fn export_memory(&mut self, name: &str, id: u32) {
+        self.section.export(name, ExportKind::Memory, id);
     }
 
     pub fn export_function(&mut self, name: &String, id: u32) {
