@@ -6,10 +6,8 @@ external element {
     fn create(el: i32, text: i32);
 }
 
-fn skip_string(str: i32, n: i32): i32 {
-    return str + n;
-}
-
 export fn main() {
-    log_str(skip_string("HelloWorld", 3));
+    let str: i32 = "Hello World";
+
+    log_str(str);
 }

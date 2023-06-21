@@ -61,7 +61,7 @@ impl<'a> Parse<'a> for Statement {
             Token::Break => Ok(Self::Break(BreakStatement::parse(parser, None)?)),
             Token::External => Ok(Self::External(ExternalStatement::parse(parser, None)?)),
             Token::Ident(_) => {
-                if parser.next_token_is(Token::Assign) {
+                if parser.next_token_is(Token::Assign) || parser.next_token_is(Token::LBrack) {
                     Ok(Self::Set(SetStatement::parse(parser, precedence)?))
                 } else {
                     Self::parse_expression(parser, Some(Precedence::Lowest))
@@ -415,7 +415,6 @@ impl<'a> Parse<'a> for IndexExpr {
         //parser.next_token();
 
         parser.expect_peek(Token::RBrack)?;
-        parser.next_token();
 
         Ok(IndexExpr {
             variable: ident,

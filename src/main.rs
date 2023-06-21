@@ -35,8 +35,6 @@ fn main() {
     let mut parser = Parser::new(&mut lexer);
     let program = Program::parse(&mut parser, None).unwrap();
 
-    println!("{:?}" ,program);
-
     let mut generator = Generator::new(program);
 
     generator.visit().unwrap();
