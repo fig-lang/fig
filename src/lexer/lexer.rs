@@ -29,6 +29,8 @@ impl Lexer {
             b'}' => Token::RSquirly,
             b'(' => Token::Lparen,
             b')' => Token::Rparen,
+            b'[' => Token::LBrack,
+            b']' => Token::RBrack,
             b',' => Token::Comma,
             b';' => Token::Semicolon,
             b':' => Token::Colon,

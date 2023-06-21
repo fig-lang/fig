@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
-    ExportSection, Function, FunctionSection, GlobalSection, ImportSection, Instruction,
+    ExportSection, Function, FunctionSection, GlobalSection, ImportSection, Instruction, MemArg,
     MemorySection, MemoryType, Module, TableSection, TypeSection, ValType,
 };
 
@@ -10,8 +10,8 @@ use crate::{
     lexer::token::Token,
     parser::ast::{
         BlockStatement, BreakStatement, CallExpr, ExportStatement, Expression, ExternalStatement,
-        FunctionMeta, FunctionStatement, Identifier, IfExpr, InfixExpr, Integer, LetStatement,
-        LoopStatement, Program, ReturnStatement, SetStatement, Statement, StringExpr,
+        FunctionMeta, FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer,
+        LetStatement, LoopStatement, Program, ReturnStatement, SetStatement, Statement, StringExpr,
     },
 };
 
@@ -188,19 +188,49 @@ impl<'a> Instructions<'a> for BreakStatement {
     }
 }
 
+impl IndexExpr {
+    fn get_instruction(&self) -> CResult<Vec<Instruction>> {
+        Ok(vec![Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        })])
+    }
+}
+
+impl<'a> Instructions<'a> for IndexExpr {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        Ok(vec![Instruction::I32Store(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        })])
+    }
+}
+
 impl<'a> Instructions<'a> for SetStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
         let mut expression = self.expression.generate_instructions(gen)?;
 
-        let Some(var_id) = gen.local_manager.get_local_index(&self.variable.value) else {
-            return Err(
-                CompilerError::NotDefined(
-                    format!("Variable with name {} is not defined!", self.variable.value)
-                )
-            );
-        };
+        match &self.variable {
+            Expression::Index(index_expr) => {
+                expression.extend(index_expr.generate_instructions(gen)?)
+            }
 
-        expression.push(Instruction::LocalSet(var_id.to_owned()));
+            Expression::Identifier(ident) => {
+                let Some(var_id) = gen.local_manager.get_local_index(&ident.value) else {
+                    return Err(
+                        CompilerError::NotDefined(
+                            format!("Variable with name {} is not defined!", ident.value)
+                        )
+                    );
+                };
+
+                expression.push(Instruction::LocalSet(var_id.to_owned()));
+            }
+
+            _ => unreachable!(),
+        }
 
         Ok(expression)
     }
@@ -241,7 +271,8 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
             Expression::Call(call) => Ok(call.generate_instructions(gen)?),
             Expression::String(s) => Ok(s.generate_instructions(gen)?),
-            Expression::If(ifexpr) => Ok(ifexpr.generate_instructions(gen)?),
+            Expression::If(if_expr) => Ok(if_expr.generate_instructions(gen)?),
+            Expression::Index(index_expr) => Ok(index_expr.get_instruction()?),
 
             x => panic!("{:?}", x),
         }

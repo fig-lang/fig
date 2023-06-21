@@ -26,6 +26,8 @@ pub enum Token {
     Rparen,
     LSquirly,
     RSquirly,
+    LBrack,
+    RBrack,
 
     Function,
     External,
@@ -71,6 +73,8 @@ impl Display for Token {
             Rparen => write!(f, ")"),
             LSquirly => write!(f, "l squirly"),
             RSquirly => write!(f, "r squirly"),
+            LBrack => write!(f, "["),
+            RBrack => write!(f, "]"),
 
             Function => write!(f, "fn"),
             Let => write!(f, "let"),

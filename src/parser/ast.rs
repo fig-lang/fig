@@ -193,9 +193,17 @@ impl<'a> Parse<'a> for LoopStatement {
 //
 // This is the set statement
 // x = 5;
+//
+// Also we have to provide the variable (memory) sets
+// for example
+// let y = malloc(5);
+// y[0] = 4;
+// y[1] = 3;
+// y[2] = 11;
+// y[10] = 50; // oops, overflow
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SetStatement {
-    pub(crate) variable: Identifier,
+    pub(crate) variable: Expression,
     pub(crate) expression: Expression,
 }
 
@@ -203,7 +211,14 @@ impl<'a> Parse<'a> for SetStatement {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         // so we want an left_expr
         // the left_expr must be an identifier which is the variable name
-        let variable = Identifier::parse(parser, None)?;
+        let variable = Expression::parse(parser, None)?;
+
+        if !(matches!(variable, Expression::Identifier(_) | Expression::Index(_))) {
+            return Err(ParserError::expected(
+                format!("variable name or index"),
+                format!("{:?}", variable),
+            ));
+        }
 
         parser.expect_peek(Token::Assign)?;
 
@@ -286,6 +301,7 @@ pub enum Expression {
     If(IfExpr),
     Call(CallExpr),
     String(StringExpr),
+    Index(IndexExpr),
 }
 
 impl<'a> Parse<'a> for Expression {
@@ -293,7 +309,11 @@ impl<'a> Parse<'a> for Expression {
         let mut left_expr = match &parser.current_token {
             Token::Int(_) => Expression::Integer(Integer::parse(parser, precedence.clone())?),
             Token::Ident(_) => {
-                Expression::Identifier(Identifier::parse(parser, precedence.clone())?)
+                if parser.next_token_is(Token::LBrack) {
+                    Expression::Index(IndexExpr::parse(parser, precedence.clone())?)
+                } else {
+                    Expression::Identifier(Identifier::parse(parser, precedence.clone())?)
+                }
             }
 
             Token::Minus | Token::Bang => {
@@ -376,6 +396,31 @@ impl<'a> Parse<'a> for StringExpr {
             }),
             _ => unreachable!(),
         }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexExpr {
+    pub(crate) variable: Identifier,
+    pub(crate) index: Integer,
+}
+
+impl<'a> Parse<'a> for IndexExpr {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        let ident = Identifier::parse(parser, None)?;
+
+        parser.expect_peek(Token::LBrack)?;
+        parser.next_token();
+
+        let int = Integer::parse(parser, precedence)?;
+        //parser.next_token();
+
+        parser.expect_peek(Token::RBrack)?;
+        parser.next_token();
+
+        Ok(IndexExpr {
+            variable: ident,
+            index: int,
+        })
     }
 }
 
