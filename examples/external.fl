@@ -8,6 +8,12 @@ external element {
 
 export fn main() {
     let str: i32 = "Hello World";
+    let str2: i32 = "Second String";
+
+    str[0] = 55;
+
+    str2[1] = 33;
 
     log_str(str);
+
 }
