@@ -60,9 +60,11 @@ class Reader {
     };
 
     const wasm = await fetch_source("./external.wasm");
-    const exports = await wasmInstance(wasm, imports).then(ins => get_exports(ins));
+    const exports = await wasmInstance(wasm, imports)
+        .then(ins => get_exports(ins));
     reader.set_mem(new Uint8Array(exports.memory.buffer));
 
     exports.main();
+    console.log(new Uint8Array(exports.memory.buffer));
 })()
     .catch(x => console.error(x))
