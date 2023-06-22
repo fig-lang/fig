@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, panic::RefUnwindSafe};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -199,8 +199,8 @@ impl IndexExpr {
 }
 
 impl<'a> Instructions<'a> for IndexExpr {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        Ok(vec![Instruction::I32Store(MemArg {
+    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        Ok(vec![Instruction::I32Store8(MemArg {
             offset: 0,
             align: 0,
             memory_index: 0,
@@ -210,11 +210,19 @@ impl<'a> Instructions<'a> for IndexExpr {
 
 impl<'a> Instructions<'a> for SetStatement {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        let mut expression = self.expression.generate_instructions(gen)?;
+        let mut result: Vec<Instruction> = vec![];
+        let expression = self.expression.generate_instructions(gen)?;
 
         match &self.variable {
             Expression::Index(index_expr) => {
-                expression.extend(index_expr.generate_instructions(gen)?)
+                // First we want to get the offset,
+                // we add the current offset with the self.index
+                let offset = (gen.memory_manager.current_offset()
+                    - gen.memory_manager.current_offset()
+                    + index_expr.index.value) as u64;
+                result.push(Instruction::I32Const(offset as i32));
+                result.extend(expression);
+                result.extend(index_expr.generate_instructions(gen)?);
             }
 
             Expression::Identifier(ident) => {
@@ -226,13 +234,13 @@ impl<'a> Instructions<'a> for SetStatement {
                     );
                 };
 
-                expression.push(Instruction::LocalSet(var_id.to_owned()));
+                result.push(Instruction::LocalSet(var_id.to_owned()));
             }
 
             _ => unreachable!(),
         }
 
-        Ok(expression)
+        Ok(result)
     }
 }
 
@@ -772,6 +780,10 @@ impl MemoryManager {
         self.offset += size;
 
         ptr
+    }
+
+    pub fn current_offset(&self) -> i32 {
+        self.offset
     }
 
     pub fn get_sections(&self) -> (MemorySection, DataSection) {

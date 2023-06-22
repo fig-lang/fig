@@ -115,7 +115,6 @@ impl<'a> Parse<'a> for LetStatement {
         let value_type = Type::parse(parser, precedence)?;
 
         parser.expect_peek(Token::Assign)?;
-
         parser.next_token();
 
         let let_value = Expression::parse(parser, Some(Precedence::Lowest))?;
