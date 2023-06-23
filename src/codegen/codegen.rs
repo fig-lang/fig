@@ -189,12 +189,32 @@ impl<'a> Instructions<'a> for BreakStatement {
 }
 
 impl IndexExpr {
-    fn get_instruction(&self) -> CResult<Vec<Instruction>> {
-        Ok(vec![Instruction::I32Load(MemArg {
+    fn get_instruction<'a>(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut offset = self.get_offset(gen)?;
+        offset.push(Instruction::I32Load(MemArg {
             offset: 0,
             align: 0,
             memory_index: 0,
-        })])
+        }));
+        Ok(offset)
+    }
+
+    fn get_offset<'a>(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        let mut result: Vec<Instruction> = vec![];
+        // First we want to get the offset,
+        // we add the current offset with the self.index
+        let Some(variable) = gen.local_manager.get_local_index(&self.variable.value) else {
+            return Err(CompilerError::NotDefined(
+                format!("Variable with name {} is not defined!", self.variable.value)
+            ));
+        };
+
+        // Is this good solution ?
+        result.push(Instruction::LocalGet(variable.clone()));
+        result.push(Instruction::I32Const(self.index.value as i32));
+        result.push(Instruction::I32Add);
+
+        Ok(result)
     }
 }
 
@@ -215,12 +235,7 @@ impl<'a> Instructions<'a> for SetStatement {
 
         match &self.variable {
             Expression::Index(index_expr) => {
-                // First we want to get the offset,
-                // we add the current offset with the self.index
-                let offset = (gen.memory_manager.current_offset()
-                    - gen.memory_manager.current_offset()
-                    + index_expr.index.value) as u64;
-                result.push(Instruction::I32Const(offset as i32));
+                result.extend(index_expr.get_offset(gen)?);
                 result.extend(expression);
                 result.extend(index_expr.generate_instructions(gen)?);
             }
@@ -280,7 +295,7 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Call(call) => Ok(call.generate_instructions(gen)?),
             Expression::String(s) => Ok(s.generate_instructions(gen)?),
             Expression::If(if_expr) => Ok(if_expr.generate_instructions(gen)?),
-            Expression::Index(index_expr) => Ok(index_expr.get_instruction()?),
+            Expression::Index(index_expr) => Ok(index_expr.get_instruction(gen)?),
 
             x => panic!("{:?}", x),
         }
@@ -765,7 +780,6 @@ impl MemoryManager {
             offset: 0,
         }
     }
-
     /// Returns pointer to the data
     pub fn alloc<D>(&mut self, size: i32, data: D) -> i32
     where
