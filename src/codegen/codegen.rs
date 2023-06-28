@@ -1,4 +1,4 @@
-use std::{collections::HashMap, panic::RefUnwindSafe};
+use std::collections::HashMap;
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -211,7 +211,7 @@ impl IndexExpr {
 
         // Is this good solution ?
         result.push(Instruction::LocalGet(variable.clone()));
-        result.push(Instruction::I32Const(self.index.value as i32));
+        result.extend(self.index.generate_instructions(gen)?);
         result.push(Instruction::I32Add);
 
         Ok(result)
@@ -248,6 +248,8 @@ impl<'a> Instructions<'a> for SetStatement {
                         )
                     );
                 };
+
+                result.extend(expression);
 
                 result.push(Instruction::LocalSet(var_id.to_owned()));
             }
@@ -617,6 +619,8 @@ impl FunctionManager {
         self.functions.get(function_name)
     }
 
+    pub fn new_internal_function(&mut self, name: String, params: Vec<FunctionParam>) {}
+
     pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
         let new_fn = FunctionData {
             name: name.clone(),
@@ -780,6 +784,7 @@ impl MemoryManager {
             offset: 0,
         }
     }
+
     /// Returns pointer to the data
     pub fn alloc<D>(&mut self, size: i32, data: D) -> i32
     where
@@ -796,8 +801,7 @@ impl MemoryManager {
         ptr
     }
 
-    pub fn current_offset(&self) -> i32 {
-        self.offset
+    pub fn free(&mut self, id: i32) {
     }
 
     pub fn get_sections(&self) -> (MemorySection, DataSection) {

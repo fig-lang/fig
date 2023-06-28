@@ -400,7 +400,7 @@ impl<'a> Parse<'a> for StringExpr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexExpr {
     pub(crate) variable: Identifier,
-    pub(crate) index: Integer,
+    pub(crate) index: Box<Expression>,
 }
 
 impl<'a> Parse<'a> for IndexExpr {
@@ -410,14 +410,13 @@ impl<'a> Parse<'a> for IndexExpr {
         parser.expect_peek(Token::LBrack)?;
         parser.next_token();
 
-        let int = Integer::parse(parser, precedence)?;
-        //parser.next_token();
+        let index = Expression::parse(parser, precedence)?;
 
         parser.expect_peek(Token::RBrack)?;
 
         Ok(IndexExpr {
             variable: ident,
-            index: int,
+            index: Box::new(index),
         })
     }
 }
