@@ -46,6 +46,7 @@ class Reader {
     const imports = {
         console: {
             log_str: (ptr) => log_str(reader.get_mem(), ptr),
+            log: (n) => console.log(n),
         },
         element: {
             // element ptr and text ptr
