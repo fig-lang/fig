@@ -1,18 +1,26 @@
 external console {
     fn log_str(ptr: i32);
+    fn log(num: i32);
 }
 
-external element {
-    fn create(el: i32, text: i32);
+fn len(str: i32): i32 {
+    let len: i32 = 0;
+
+    loop {
+        log(str[len]);
+        if (str[len] == 0) {
+            break;
+        }
+
+        len = len + 1;
+    }
+
+    return len;
 }
 
 export fn main() {
-    let str: i32 = "Hello World";
-    let sec_str: i32 = "Second String";
+    let string: i32 = "hello";
+    let n_s: i32 = "helloWorld";
 
-    str[0] = 1;
-    sec_str[1] = sec_str[0] + 5;
-
-    log_str(str);
-    log_str(str[0]);
+    log( len(string) );
 }
