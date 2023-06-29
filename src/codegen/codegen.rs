@@ -2,18 +2,21 @@ use std::collections::HashMap;
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
-    ExportSection, Function, FunctionSection, GlobalSection, ImportSection, Instruction, MemArg,
-    MemorySection, MemoryType, Module, TableSection, TypeSection, ValType,
+    ExportSection, Function, FunctionSection, GlobalSection, GlobalType, ImportSection,
+    Instruction, MemArg, MemorySection, MemoryType, Module, TableSection, TypeSection, ValType,
 };
 
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BreakStatement, CallExpr, ExportStatement, Expression, ExternalStatement,
-        FunctionMeta, FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer,
-        LetStatement, LoopStatement, Program, ReturnStatement, SetStatement, Statement, StringExpr,
+        BlockStatement, BreakStatement, BuiltinStatement, CallExpr, ExportStatement, Expression,
+        ExternalStatement, FunctionMeta, FunctionStatement, Identifier, IfExpr, IndexExpr,
+        InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement, SetStatement,
+        Statement, StringExpr,
     },
 };
+
+use super::builtins::malloc;
 
 #[derive(Debug)]
 pub enum CompilerError {
@@ -64,11 +67,17 @@ impl<'a> Instructions<'a> for CallExpr {
             result.extend(arg.generate_instructions(gen)?);
         }
 
-        let Some(func) = gen.function_manager.get_function(&self.function.value) else {
-            return Err(
-                CompilerError::NotDefined(format!("Function with name {} is not defined!", self.function.value))
-            );
-        };
+        let func = match gen.function_manager.get_builtin_function(&self.function.value){
+            Some(func) => Ok(func),
+            None => {
+                match gen.function_manager.get_function(&self.function.value) {
+                    Some(func) => Ok(func),
+                    None => Err(
+                        CompilerError::NotDefined(format!("Function with name {} is not defined!", self.function.value))
+                    ),
+                }
+            }
+        }?;
 
         result.push(Instruction::Call(func.id));
 
@@ -126,6 +135,7 @@ impl<'a> Instructions<'a> for InfixExpr {
 
 impl<'a> Instructions<'a> for Integer {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // TODO: push the currect type
         Ok(vec![Instruction::I32Const(self.value)])
     }
 }
@@ -158,6 +168,34 @@ impl<'a> Instructions<'a> for ExternalStatement {
                 EntityType::Function(type_id),
             );
         }
+        Ok(vec![])
+    }
+}
+
+impl<'a> Instructions<'a> for BuiltinStatement {
+    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // is function exists
+        let Some(_function) = gen
+            .function_manager
+            .get_builtin_function(&self.function_meta.name.value) 
+            else {
+                return Err(CompilerError::NotDefined(format!("Function with name {} is not defined!", &self.function_meta.name.value)));
+            };
+
+        let meta_type = self.function_meta.types()?;
+
+        let type_id = gen.type_manager.new_function_type(meta_type.0, meta_type.1);
+
+        gen.function_manager.add_builtin_function_type(type_id);
+
+        let code = match self.function_meta.name.value.as_str(){
+            "malloc" => malloc(&mut gen.code_manager, gen.global_manager.get_global(&"mem_offset".to_string()).unwrap().clone()),
+
+            _ => todo!()
+        };
+
+        gen.code_manager.new_function_code(code);
+
         Ok(vec![])
     }
 }
@@ -329,8 +367,7 @@ impl<'a> Instructions<'a> for LetStatement {
 
         // create new local
         gen.code_manager
-            .current_locals
-            .push(self.value_type.clone().try_into()?);
+            .add_local(self.value_type.clone().try_into()?);
 
         if !gen.local_manager.get_already_set() {
             result.push(Instruction::LocalSet(local_index));
@@ -452,6 +489,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Set(set) => set.generate_instructions(gen),
             Statement::Break(br) => br.generate_instructions(gen),
             Statement::External(external) => external.generate_instructions(gen),
+            Statement::Builtin(builtin) => builtin.generate_instructions(gen),
 
             _ => todo!(),
         }
@@ -469,6 +507,7 @@ impl<'a> Instructions<'a> for Program {
     }
 }
 
+/// Codegen context
 pub struct Generator {
     /// The result of the parser
     ast: Program,
@@ -492,6 +531,8 @@ pub struct Generator {
     export_manager: ExportManager,
 
     import_manager: ImportManager,
+
+    global_manager: GlobalManager,
 }
 
 impl Generator {
@@ -512,6 +553,7 @@ impl Generator {
             local_manager: LocalManager::new(),
             export_manager: ExportManager::new(),
             import_manager: ImportManager::new(),
+            global_manager: GlobalManager::new(),
             memory_manager: MemoryManager::new(mem),
         }
     }
@@ -524,21 +566,37 @@ impl Generator {
         Ok(())
     }
 
+    /// Bootstraps the default variables
+    /// like memory offset
+    pub fn bootstrap(&mut self) {
+        // Get the current offset
+        // sometimes user alloc's the static string
+        let current_offset = self.memory_manager.offset;
+
+        self.global_manager
+            // the value 0 is deferent in some runtimes
+            .add_global_int("mem_offset", &ConstExpr::i64_const(current_offset as i64), true);
+        
+        self.function_manager.new_builtin_function("malloc", vec![
+            FunctionParam { id: 0, name:"size".to_string(), param_type: ValType::I64 }
+        ]);
+    }
+
     pub fn generate(&mut self) -> Vec<u8> {
         // export memory
         self.export_manager.export_memory("memory", 0);
 
         //TODO
         self.module.section(&self.type_manager.get_section());
-        self.module.section(&self.import_manager.get_sections());
+        self.module.section(&self.import_manager.get_section());
         self.module.section(&self.function_manager.get_section());
         self.module.section(&TableSection::new());
 
         let (mem_section, data_section) = &self.memory_manager.get_sections();
 
         self.module.section(mem_section);
-        self.module.section(&GlobalSection::new());
-        self.module.section(&self.export_manager.get_sections());
+        self.module.section(&self.global_manager.get_section());
+        self.module.section(&self.export_manager.get_section());
         self.module.section(&ElementSection::new());
 
         self.module.section(&self.code_manager.get_section());
@@ -595,6 +653,7 @@ pub struct FunctionParam {
 }
 
 pub struct FunctionManager {
+    builtin_functions: HashMap<String, FunctionData>,
     functions: HashMap<String, FunctionData>,
     section: FunctionSection,
     functions_index: u32,
@@ -606,6 +665,7 @@ impl FunctionManager {
         Self {
             section: FunctionSection::new(),
             functions_index: 0,
+            builtin_functions: HashMap::new(),
             functions: HashMap::new(),
             current_function: None,
         }
@@ -619,7 +679,24 @@ impl FunctionManager {
         self.functions.get(function_name)
     }
 
-    pub fn new_internal_function(&mut self, name: String, params: Vec<FunctionParam>) {}
+    pub fn get_builtin_function(&self, function_name: &String) -> Option<&FunctionData> {
+        self.builtin_functions.get(function_name)
+    }
+
+    pub fn new_builtin_function(&mut self, name: &str, params: Vec<FunctionParam>) {
+        let new_fn = FunctionData {
+            name: name.to_string(),
+            params,
+            id: self.functions_index,
+        };
+
+        self.builtin_functions.insert(name.to_string(), new_fn.clone());
+        self.functions_index += 1;
+    }
+
+    pub fn add_builtin_function_type(&mut self, type_index: u32) {
+        self.section.function(type_index);
+    }
 
     pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
         let new_fn = FunctionData {
@@ -677,6 +754,10 @@ impl CodeManager {
         }
 
         self.section.function(&func);
+    }
+
+    pub fn add_local(&mut self, local: ValType) {
+        self.current_locals.push(local)
     }
 
     pub fn get_section(&self) -> CodeSection {
@@ -801,8 +882,7 @@ impl MemoryManager {
         ptr
     }
 
-    pub fn free(&mut self, id: i32) {
-    }
+    pub fn free(&mut self, id: i32) {}
 
     pub fn get_sections(&self) -> (MemorySection, DataSection) {
         (self.memory_section.clone(), self.data_section.clone())
@@ -828,7 +908,7 @@ impl ExportManager {
         self.section.export(name, ExportKind::Func, id);
     }
 
-    pub fn get_sections(&self) -> ExportSection {
+    pub fn get_section(&self) -> ExportSection {
         self.section.clone()
     }
 }
@@ -853,7 +933,50 @@ impl ImportManager {
         self.section.import(module, function_name, function_type);
     }
 
-    pub fn get_sections(&self) -> ImportSection {
+    pub fn get_section(&self) -> ImportSection {
+        self.section.clone()
+    }
+}
+
+pub struct GlobalManager {
+    section: GlobalSection,
+    /// <global_name, id>
+    globals: HashMap<String, u32>,
+    globals_id: u32,
+}
+
+impl GlobalManager {
+    pub fn new() -> Self {
+        Self {
+            section: GlobalSection::new(),
+            globals: HashMap::new(),
+            globals_id: 0,
+        }
+    }
+
+    /// Adds global integer
+    pub fn add_global_int(&mut self, name: &str ,init: &ConstExpr, mutable: bool) -> u32 {
+        self.section.global(
+            GlobalType {
+                val_type: ValType::I64,
+                mutable,
+            },
+            init,
+        );
+
+        let id = self.globals_id;
+        self.globals.insert(name.to_string(), id);
+
+        self.globals_id += 1;
+
+        id
+    }
+
+    pub fn get_global(&self, name: &String) -> Option<&u32> {
+        self.globals.get(name)
+    }
+
+    pub fn get_section(&self) -> GlobalSection {
         self.section.clone()
     }
 }

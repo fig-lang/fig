@@ -31,6 +31,7 @@ pub enum Statement {
     Set(SetStatement),
     Break(BreakStatement),
     External(ExternalStatement),
+    Builtin(BuiltinStatement),
 }
 
 impl Statement {
@@ -60,6 +61,7 @@ impl<'a> Parse<'a> for Statement {
             Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
             Token::Break => Ok(Self::Break(BreakStatement::parse(parser, None)?)),
             Token::External => Ok(Self::External(ExternalStatement::parse(parser, None)?)),
+            Token::Builtin => Ok(Self::Builtin(BuiltinStatement::parse(parser, None)?)),
             Token::Ident(_) => {
                 if parser.next_token_is(Token::Assign) || parser.next_token_is(Token::LBrack) {
                     Ok(Self::Set(SetStatement::parse(parser, precedence)?))
@@ -287,6 +289,24 @@ impl<'a> Parse<'a> for ExternalStatement {
         //parser.expect_peek(Token::RSquirly)?;
 
         Ok(ExternalStatement { module, body })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltinStatement {
+    pub(crate) function_meta: FunctionMeta,
+}
+
+impl<'a> Parse<'a> for BuiltinStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // skip builtin token
+        parser.next_token();
+
+        let function_meta = FunctionMeta::parse(parser, precedence)?;
+
+        parser.expect_peek(Token::Semicolon)?;
+
+        Ok(BuiltinStatement { function_meta })
     }
 }
 

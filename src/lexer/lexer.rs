@@ -83,6 +83,7 @@ impl Lexer {
                         "loop" => Token::Loop,
                         "break" => Token::Break,
                         "external" => Token::External,
+                        "builtin" => Token::Builtin,
                         _ => Token::Ident(ident),
                     });
                 }

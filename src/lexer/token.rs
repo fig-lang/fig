@@ -31,6 +31,7 @@ pub enum Token {
 
     Function,
     External,
+    Builtin,
     Let,
     Loop,
     Export,
@@ -88,6 +89,7 @@ impl Display for Token {
             Loop => write!(f, "loop"),
             Break => write!(f, "break"),
             External => write!(f, "external"),
+            Builtin => write!(f, "builtin"),
 
             String(s) => write!(f, "'{}'", s),
         }

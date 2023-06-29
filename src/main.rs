@@ -36,6 +36,7 @@ fn main() {
     let program = Program::parse(&mut parser, None).unwrap();
 
     let mut generator = Generator::new(program);
+    generator.bootstrap();
 
     generator.visit().unwrap();
 
