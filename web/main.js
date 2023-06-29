@@ -60,7 +60,7 @@ class Reader {
         }
     };
 
-    const wasm = await fetch_source("./external.wasm");
+    const wasm = await fetch_source("./malloc.wasm");
     const exports = await wasmInstance(wasm, imports)
         .then(ins => get_exports(ins));
     reader.set_mem(new Uint8Array(exports.memory.buffer));
