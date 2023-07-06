@@ -1,5 +1,3 @@
-builtin fn malloc(size: i64): i64;
+builtin fn malloc(size: i32): i32;
 
-export fn main() {
-    let x: i64 = malloc(5);
-}
+export fn main() {}
