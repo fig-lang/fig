@@ -1,4 +1,4 @@
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -67,16 +67,18 @@ impl<'a> Instructions<'a> for CallExpr {
             result.extend(arg.generate_instructions(gen)?);
         }
 
-        let func = match gen.function_manager.get_builtin_function(&self.function.value){
+        let func = match gen
+            .function_manager
+            .get_builtin_function(&self.function.value)
+        {
             Some(func) => Ok(func),
-            None => {
-                match gen.function_manager.get_function(&self.function.value) {
-                    Some(func) => Ok(func),
-                    None => Err(
-                        CompilerError::NotDefined(format!("Function with name {} is not defined!", self.function.value))
-                    ),
-                }
-            }
+            None => match gen.function_manager.get_function(&self.function.value) {
+                Some(func) => Ok(func),
+                None => Err(CompilerError::NotDefined(format!(
+                    "Function with name {} is not defined!",
+                    self.function.value
+                ))),
+            },
         }?;
 
         result.push(Instruction::Call(func.id));
@@ -94,14 +96,16 @@ impl<'a> Instructions<'a> for StringExpr {
         string.push('\0');
 
         let current_mem_offset = gen.memory_manager.offset;
-        gen.global_manager
-            .set_global("mem_offset", ConstExpr::i32_const(current_mem_offset + size as i32));
+        gen.global_manager.set_global(
+            "mem_offset",
+            ConstExpr::i32_const(current_mem_offset + size as i32),
+        );
 
         let ptr = gen
             .memory_manager
             .alloc(size as i32, string.as_bytes().to_vec());
 
-       Ok(vec![Instruction::I32Const(ptr)])
+        Ok(vec![Instruction::I32Const(ptr)])
     }
 }
 
@@ -193,10 +197,15 @@ impl<'a> Instructions<'a> for BuiltinStatement {
 
         gen.function_manager.add_builtin_function_type(type_id);
 
-        let code = match self.function_meta.name.value.as_str(){
-            "malloc" => malloc(&mut gen.code_manager, gen.global_manager.get_global_id(&"mem_offset".to_string()).clone()),
+        let code = match self.function_meta.name.value.as_str() {
+            "malloc" => malloc(
+                &mut gen.code_manager,
+                gen.global_manager
+                    .get_global_id(&"mem_offset".to_string())
+                    .clone(),
+            ),
 
-            _ => todo!()
+            _ => todo!(),
         };
 
         gen.code_manager.new_function_code(code);
@@ -564,10 +573,6 @@ impl Generator {
     }
 
     pub fn visit(&mut self) -> CResult<()> {
-        self.function_manager.new_builtin_function("malloc", vec![
-            FunctionParam { id: 0, name:"size".to_string(), param_type: ValType::I32 }
-        ]);
-
         let ast = self.ast.clone();
 
         ast.generate_instructions(self)?;
@@ -581,6 +586,15 @@ impl Generator {
         self.global_manager
             // the value 0 is deferent in some runtimes
             .add_global_int("mem_offset", ConstExpr::i32_const(0), true);
+
+        self.function_manager.new_builtin_function(
+            "malloc",
+            vec![FunctionParam {
+                id: 0,
+                name: "size".to_string(),
+                param_type: ValType::I32,
+            }],
+        );
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
@@ -683,7 +697,7 @@ impl FunctionManager {
         self.functions.get(function_name)
     }
 
-    pub fn get_builtin_function(&self, function_name: &String) -> Option<&FunctionData> {
+    pub fn get_builtin_function(&mut self, function_name: &String) -> Option<&FunctionData> {
         self.builtin_functions.get(function_name)
     }
 
@@ -694,12 +708,14 @@ impl FunctionManager {
             id: self.functions_index,
         };
 
-        self.builtin_functions.insert(name.to_string(), new_fn.clone());
-        self.functions_index += 1;
+        self.builtin_functions
+            .insert(name.to_string(), new_fn.clone());
+        //self.functions_index += 1;
     }
 
     pub fn add_builtin_function_type(&mut self, type_index: u32) {
         self.section.function(type_index);
+        self.functions_index += 1;
     }
 
     pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
@@ -945,7 +961,7 @@ impl ImportManager {
 pub struct GlobalManager {
     section: GlobalSection,
     /// <global_name, id>
-    globals: BTreeMap<String, (u32,GlobalType, ConstExpr)>,
+    globals: BTreeMap<String, (u32, GlobalType, ConstExpr)>,
     globals_id: u32,
 }
 
@@ -961,13 +977,22 @@ impl GlobalManager {
     /// Adds global integer
     pub fn add_global_int(&mut self, name: &str, init: ConstExpr, mutable: bool) -> u32 {
         let id = self.globals_id;
-        self.globals.insert(name.to_string(), (id, GlobalType { val_type: ValType::I32, mutable }, init));
+        self.globals.insert(
+            name.to_string(),
+            (
+                id,
+                GlobalType {
+                    val_type: ValType::I32,
+                    mutable,
+                },
+                init,
+            ),
+        );
 
         self.globals_id += 1;
 
         id
     }
-
 
     /// Start pop all the globals and apply them
     pub fn apply_globals(&mut self) {

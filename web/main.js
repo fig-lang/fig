@@ -66,6 +66,6 @@ class Reader {
     reader.set_mem(new Uint8Array(exports.memory.buffer));
 
     exports.main();
-    console.log(new Uint8Array(exports.memory.buffer));
+    //console.log(new Uint8Array(exports.memory.buffer));
 })()
     .catch(x => console.error(x))

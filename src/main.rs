@@ -38,7 +38,6 @@ fn main() {
     let mut generator = Generator::new(program);
 
     generator.bootstrap();
-
     generator.visit().unwrap();
 
     let buf = generator.generate();
