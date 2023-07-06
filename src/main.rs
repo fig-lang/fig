@@ -36,12 +36,13 @@ fn main() {
     let program = Program::parse(&mut parser, None).unwrap();
 
     let mut generator = Generator::new(program);
+
     generator.bootstrap();
 
     generator.visit().unwrap();
 
     let buf = generator.generate();
-    
+
     let output_path = args.next();
 
     let mut file = File::create(PathBuf::from(output_path.unwrap())).unwrap();

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -87,16 +87,21 @@ impl<'a> Instructions<'a> for CallExpr {
 
 impl<'a> Instructions<'a> for StringExpr {
     fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+        // the + 1 is for \0 at the end of the string
         let size = self.string.len() + 1;
 
         let mut string = self.string.to_owned();
         string.push('\0');
 
+        let current_mem_offset = gen.memory_manager.offset;
+        gen.global_manager
+            .set_global("mem_offset", ConstExpr::i32_const(current_mem_offset + size as i32));
+
         let ptr = gen
             .memory_manager
             .alloc(size as i32, string.as_bytes().to_vec());
 
-        Ok(vec![Instruction::I32Const(ptr)])
+       Ok(vec![Instruction::I32Const(ptr)])
     }
 }
 
@@ -135,7 +140,7 @@ impl<'a> Instructions<'a> for InfixExpr {
 
 impl<'a> Instructions<'a> for Integer {
     fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        // TODO: push the currect type
+        // TODO: push the correct type
         Ok(vec![Instruction::I32Const(self.value)])
     }
 }
@@ -189,7 +194,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
         gen.function_manager.add_builtin_function_type(type_id);
 
         let code = match self.function_meta.name.value.as_str(){
-            "malloc" => malloc(&mut gen.code_manager, gen.global_manager.get_global(&"mem_offset".to_string()).unwrap().clone()),
+            "malloc" => malloc(&mut gen.code_manager, gen.global_manager.get_global_id(&"mem_offset".to_string()).clone()),
 
             _ => todo!()
         };
@@ -559,6 +564,10 @@ impl Generator {
     }
 
     pub fn visit(&mut self) -> CResult<()> {
+        self.function_manager.new_builtin_function("malloc", vec![
+            FunctionParam { id: 0, name:"size".to_string(), param_type: ValType::I32 }
+        ]);
+
         let ast = self.ast.clone();
 
         ast.generate_instructions(self)?;
@@ -569,17 +578,9 @@ impl Generator {
     /// Bootstraps the default variables
     /// like memory offset
     pub fn bootstrap(&mut self) {
-        // Get the current offset
-        // sometimes user alloc's the static string
-        let current_offset = self.memory_manager.offset;
-
         self.global_manager
             // the value 0 is deferent in some runtimes
-            .add_global_int("mem_offset", &ConstExpr::i64_const(current_offset as i64), true);
-        
-        self.function_manager.new_builtin_function("malloc", vec![
-            FunctionParam { id: 0, name:"size".to_string(), param_type: ValType::I64 }
-        ]);
+            .add_global_int("mem_offset", ConstExpr::i32_const(0), true);
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
@@ -595,7 +596,10 @@ impl Generator {
         let (mem_section, data_section) = &self.memory_manager.get_sections();
 
         self.module.section(mem_section);
+
+        self.global_manager.apply_globals();
         self.module.section(&self.global_manager.get_section());
+
         self.module.section(&self.export_manager.get_section());
         self.module.section(&ElementSection::new());
 
@@ -941,7 +945,7 @@ impl ImportManager {
 pub struct GlobalManager {
     section: GlobalSection,
     /// <global_name, id>
-    globals: HashMap<String, u32>,
+    globals: BTreeMap<String, (u32,GlobalType, ConstExpr)>,
     globals_id: u32,
 }
 
@@ -949,31 +953,36 @@ impl GlobalManager {
     pub fn new() -> Self {
         Self {
             section: GlobalSection::new(),
-            globals: HashMap::new(),
+            globals: BTreeMap::new(),
             globals_id: 0,
         }
     }
 
     /// Adds global integer
-    pub fn add_global_int(&mut self, name: &str ,init: &ConstExpr, mutable: bool) -> u32 {
-        self.section.global(
-            GlobalType {
-                val_type: ValType::I64,
-                mutable,
-            },
-            init,
-        );
-
+    pub fn add_global_int(&mut self, name: &str, init: ConstExpr, mutable: bool) -> u32 {
         let id = self.globals_id;
-        self.globals.insert(name.to_string(), id);
+        self.globals.insert(name.to_string(), (id, GlobalType { val_type: ValType::I32, mutable }, init));
 
         self.globals_id += 1;
 
         id
     }
 
-    pub fn get_global(&self, name: &String) -> Option<&u32> {
-        self.globals.get(name)
+
+    /// Start pop all the globals and apply them
+    pub fn apply_globals(&mut self) {
+        while let Some((_key, val)) = self.globals.pop_first() {
+            self.section.global(val.1, &val.2);
+        }
+    }
+
+    pub fn set_global(&mut self, name: &str, value: ConstExpr) {
+        let global = self.globals.get_mut(name).unwrap();
+        *global = (global.0, global.1, value);
+    }
+
+    pub fn get_global_id(&self, name: &String) -> u32 {
+        self.globals.get(name).unwrap().0
     }
 
     pub fn get_section(&self) -> GlobalSection {
