@@ -1,8 +1,9 @@
-builtin fn malloc(size: i32): i32;
-
 external console {
+    fn log_str(n: i32);
     fn log(n: i32);
 }
+
+builtin fn malloc(size: i32): i32;
 
 fn len(str_ptr: i32): i32 {
     let length: i32 = 0;
@@ -16,10 +17,28 @@ fn len(str_ptr: i32): i32 {
     return length;
 }
 
+fn copy_str(str: i32): i32 {
+    let i: i32 = 0;
+    let length: i32 = len(str);
+    let new_str: i32 = malloc(length + 1);
+
+    loop {
+        if (i == length) { break; };
+
+        new_str[i] = str[i];
+
+        i = i + 1;
+    }
+
+    return new_str;
+}
+
 export fn main() {
     let string: i32 = "Hello World";
+    let string_new: i32 = copy_str(string);
 
-    log(len(string));
+    log(string);
+    log(string_new);
 
     return 0;
 }

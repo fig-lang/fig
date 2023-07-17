@@ -1,0 +1,14 @@
+external io {
+    fn fetch(url: i32): i32;
+}
+
+builtin fn malloc(size: i32): i32;
+
+export fn malloc_wrapper(size: i32): i32 {
+    return malloc(size);
+}
+
+export fn main() {
+    let response: i32 = fetch("http://github.com");
+}
+
