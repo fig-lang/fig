@@ -2,6 +2,11 @@ external io {
     fn fetch(url: i32): i32;
 }
 
+external console { 
+    fn log_str(ptr: i32);
+    fn log(n: i32);
+}
+
 builtin fn malloc(size: i32): i32;
 
 export fn malloc_wrapper(size: i32): i32 {
@@ -9,6 +14,9 @@ export fn malloc_wrapper(size: i32): i32 {
 }
 
 export fn main() {
-    let response: i32 = fetch("http://github.com");
+    let response: i32 = fetch("https://natiq.net");
+
+    log_str(response);
+    log(response);
 }
 

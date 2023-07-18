@@ -1,23 +1,29 @@
-use wasm_encoder::{Instruction, ValType};
+use wasm_encoder::Instruction;
 
-use super::codegen::CodeManager;
-
-/// Allocates some chunk of memory
-/// and push pointer to the stack
-pub fn malloc<'a>(code_manager: &mut CodeManager, offset_glob_id: u32) -> Vec<Instruction<'a>> {
+pub fn malloc<'a>() -> Vec<Instruction<'a>> {
     use wasm_encoder::Instruction::*;
 
-    code_manager.add_local(ValType::I32);
-
     vec![
-        GlobalGet(offset_glob_id),
+        GlobalGet(0),
         LocalSet(1),
         LocalGet(1),
         LocalGet(0),
         I32Add,
-        GlobalSet(offset_glob_id),
+        GlobalSet(0),
         LocalGet(1),
         Return,
+        End,
+    ]
+}
+
+pub fn free<'a>() -> Vec<Instruction<'a>> {
+    use wasm_encoder::Instruction::*;
+
+    vec![
+        GlobalGet(0),
+        LocalGet(0),
+        I32Sub,
+        GlobalSet(0),
         End,
     ]
 }

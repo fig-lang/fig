@@ -3,17 +3,16 @@ mod lexer;
 mod parser;
 mod types;
 
+use lexer::lexer::Lexer;
+use parser::ast::Program;
+use parser::parser::{Parse, Parser};
 use std::env::args;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-use lexer::lexer::Lexer;
-use parser::ast::Program;
-use parser::parser::{Parse, Parser};
-
-use crate::codegen::codegen::Generator;
+use crate::codegen::codegen::Context;
 
 fn read_source_file(file_path: PathBuf) -> io::Result<String> {
     let mut file = File::open(file_path)?;
@@ -35,12 +34,11 @@ fn main() {
     let mut parser = Parser::new(&mut lexer);
     let program = Program::parse(&mut parser, None).unwrap();
 
-    let mut generator = Generator::new(program);
+    let mut ctx = Context::new(program);
+    ctx.bootstrap();
+    ctx.visit().unwrap();
 
-    generator.bootstrap();
-    generator.visit().unwrap();
-
-    let buf = generator.generate();
+    let buf = ctx.generate();
 
     let output_path = args.next();
 

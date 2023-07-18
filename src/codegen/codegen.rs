@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    vec,
+};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -16,7 +19,7 @@ use crate::{
     },
 };
 
-use super::builtins::malloc;
+use super::builtins::{free, malloc};
 
 #[derive(Debug)]
 pub enum CompilerError {
@@ -53,56 +56,50 @@ impl WasmTypes for FunctionMeta {
 type CResult<T> = Result<T, CompilerError>;
 
 pub trait Instructions<'a> {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>>
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>>
     where
         Self: Sized;
 }
 
 impl<'a> Instructions<'a> for CallExpr {
     // TODO: First check if the function exists
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
 
         for arg in &self.arguments {
-            result.extend(arg.generate_instructions(gen)?);
+            result.extend(arg.generate_instructions(ctx)?);
         }
 
-        let func = match gen
-            .function_manager
-            .get_builtin_function(&self.function.value)
-        {
-            Some(func) => Ok(func),
-            None => match gen.function_manager.get_function(&self.function.value) {
-                Some(func) => Ok(func),
-                None => Err(CompilerError::NotDefined(format!(
-                    "Function with name {} is not defined!",
-                    self.function.value
-                ))),
-            },
+        let func_id = match ctx.function_ctx.get_function(&self.function.value) {
+            Some(func) => Ok(func.id),
+            None => Err(CompilerError::NotDefined(format!(
+                "Function with name {} is not defined!",
+                self.function.value
+            ))),
         }?;
 
-        result.push(Instruction::Call(func.id));
+        result.push(Instruction::Call(func_id));
 
         Ok(result)
     }
 }
 
 impl<'a> Instructions<'a> for StringExpr {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // the + 1 is for \0 at the end of the string
         let size = self.string.len() + 1;
 
         let mut string = self.string.to_owned();
         string.push('\0');
 
-        let current_mem_offset = gen.memory_manager.offset;
-        gen.global_manager.set_global(
+        let current_mem_offset = ctx.memory_ctx.offset;
+        ctx.global_ctx.set_global(
             "mem_offset",
             ConstExpr::i32_const(current_mem_offset + size as i32),
         );
 
-        let ptr = gen
-            .memory_manager
+        let ptr = ctx
+            .memory_ctx
             .alloc(size as i32, string.as_bytes().to_vec());
 
         Ok(vec![Instruction::I32Const(ptr)])
@@ -110,7 +107,7 @@ impl<'a> Instructions<'a> for StringExpr {
 }
 
 impl<'a> Instructions<'a> for Token {
-    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // Todo check type
         match self {
             Token::Plus => Ok(vec![Instruction::I32Add]),
@@ -128,11 +125,11 @@ impl<'a> Instructions<'a> for Token {
 }
 
 impl<'a> Instructions<'a> for InfixExpr {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
-        let left_side = self.left.generate_instructions(gen)?;
-        let operation = self.operator.generate_instructions(gen)?;
-        let right_side = self.right.generate_instructions(gen)?;
+        let left_side = self.left.generate_instructions(ctx)?;
+        let operation = self.operator.generate_instructions(ctx)?;
+        let right_side = self.right.generate_instructions(ctx)?;
 
         result.extend(left_side);
         result.extend(right_side);
@@ -143,18 +140,18 @@ impl<'a> Instructions<'a> for InfixExpr {
 }
 
 impl<'a> Instructions<'a> for Integer {
-    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // TODO: push the correct type
         Ok(vec![Instruction::I32Const(self.value)])
     }
 }
 
 impl<'a> Instructions<'a> for ExternalStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         for func in &self.body.function_types {
             let (param_types, result_type) = func.types()?;
-            let type_id = gen
-                .type_manager
+            let type_id = ctx
+                .type_ctx
                 .new_function_type(param_types.clone(), result_type);
 
             let params = param_types
@@ -168,10 +165,10 @@ impl<'a> Instructions<'a> for ExternalStatement {
                 })
                 .collect::<Vec<FunctionParam>>();
 
-            gen.function_manager
+            ctx.function_ctx
                 .new_external_function(func.name.value.clone(), params);
 
-            gen.import_manager.import_func(
+            ctx.import_ctx.import_func(
                 &self.module.value,
                 &func.name.value,
                 EntityType::Function(type_id),
@@ -182,46 +179,46 @@ impl<'a> Instructions<'a> for ExternalStatement {
 }
 
 impl<'a> Instructions<'a> for BuiltinStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        // is function exists
-        let Some(_function) = gen
-            .function_manager
-            .get_builtin_function(&self.function_meta.name.value) 
-            else {
-                return Err(CompilerError::NotDefined(format!("Function with name {} is not defined!", &self.function_meta.name.value)));
-            };
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        match self.function_meta.name.value.as_str() {
+            "malloc" => {
+                let type_index = ctx
+                    .type_ctx
+                    .new_function_type(vec![ValType::I32], vec![ValType::I32]);
 
-        let meta_type = self.function_meta.types()?;
+                ctx.function_ctx
+                    .new_function(type_index, "malloc".to_string(), vec![]);
 
-        let type_id = gen.type_manager.new_function_type(meta_type.0, meta_type.1);
+                ctx.code_ctx.add_local(ValType::I32);
+                ctx.code_ctx.new_function_code(malloc());
+            }
 
-        gen.function_manager.add_builtin_function_type(type_id);
+            "free" => {
+                let type_index = ctx
+                    .type_ctx
+                    .new_function_type(vec![ValType::I32], vec![]);
 
-        let code = match self.function_meta.name.value.as_str() {
-            "malloc" => malloc(
-                &mut gen.code_manager,
-                gen.global_manager
-                    .get_global_id(&"mem_offset".to_string())
-                    .clone(),
-            ),
+                ctx.function_ctx
+                    .new_function(type_index, "free".to_string(), vec![]);
+
+                ctx.code_ctx.new_function_code(free());
+            }
 
             _ => todo!(),
-        };
-
-        gen.code_manager.new_function_code(code);
+        }
 
         Ok(vec![])
     }
 }
 
 impl<'a> Instructions<'a> for LoopStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         result.push(Instruction::Block(BlockType::Empty));
 
         result.push(Instruction::Loop(BlockType::Empty));
 
-        let block = self.block.generate_instructions(gen)?;
+        let block = self.block.generate_instructions(ctx)?;
         result.extend(block);
 
         result.push(Instruction::Br(0));
@@ -233,16 +230,16 @@ impl<'a> Instructions<'a> for LoopStatement {
 }
 
 impl<'a> Instructions<'a> for BreakStatement {
-    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // TODO: not fix value
-        // need a new manager :}
+        // need a new ctx :}
         Ok(vec![Instruction::Br(2)])
     }
 }
 
 impl IndexExpr {
-    fn get_instruction<'a>(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        let mut offset = self.get_offset(gen)?;
+    fn get_instruction<'a>(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let mut offset = self.get_offset(ctx)?;
         offset.push(Instruction::I32Load(MemArg {
             offset: 0,
             align: 0,
@@ -251,11 +248,11 @@ impl IndexExpr {
         Ok(offset)
     }
 
-    fn get_offset<'a>(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn get_offset<'a>(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         // First we want to get the offset,
         // we add the current offset with the self.index
-        let Some(variable) = gen.local_manager.get_local_index(&self.variable.value) else {
+        let Some(variable) = ctx.local_ctx.get_local_index(&self.variable.value) else {
             return Err(CompilerError::NotDefined(
                 format!("Variable with name {} is not defined!", self.variable.value)
             ));
@@ -263,7 +260,7 @@ impl IndexExpr {
 
         // Is this good solution ?
         result.push(Instruction::LocalGet(variable.clone()));
-        result.extend(self.index.generate_instructions(gen)?);
+        result.extend(self.index.generate_instructions(ctx)?);
         result.push(Instruction::I32Add);
 
         Ok(result)
@@ -271,7 +268,7 @@ impl IndexExpr {
 }
 
 impl<'a> Instructions<'a> for IndexExpr {
-    fn generate_instructions(&self, _gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         Ok(vec![Instruction::I32Store8(MemArg {
             offset: 0,
             align: 0,
@@ -281,19 +278,19 @@ impl<'a> Instructions<'a> for IndexExpr {
 }
 
 impl<'a> Instructions<'a> for SetStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
-        let expression = self.expression.generate_instructions(gen)?;
+        let expression = self.expression.generate_instructions(ctx)?;
 
         match &self.variable {
             Expression::Index(index_expr) => {
-                result.extend(index_expr.get_offset(gen)?);
+                result.extend(index_expr.get_offset(ctx)?);
                 result.extend(expression);
-                result.extend(index_expr.generate_instructions(gen)?);
+                result.extend(index_expr.generate_instructions(ctx)?);
             }
 
             Expression::Identifier(ident) => {
-                let Some(var_id) = gen.local_manager.get_local_index(&ident.value) else {
+                let Some(var_id) = ctx.local_ctx.get_local_index(&ident.value) else {
                     return Err(
                         CompilerError::NotDefined(
                             format!("Variable with name {} is not defined!", ident.value)
@@ -314,13 +311,13 @@ impl<'a> Instructions<'a> for SetStatement {
 }
 
 impl<'a> Instructions<'a> for ExportStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        let function_instructions = self.value.generate_instructions(gen)?;
-        let Some(current_function) = gen.function_manager.current_function() else {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let function_instructions = self.value.generate_instructions(ctx)?;
+        let Some(current_function) = ctx.function_ctx.current_function() else {
             return Err(CompilerError::NotDefined("Function not defined!".to_string()));
         };
 
-        gen.export_manager
+        ctx.export_ctx
             .export_function(&current_function.name, current_function.id);
 
         Ok(function_instructions)
@@ -328,10 +325,10 @@ impl<'a> Instructions<'a> for ExportStatement {
 }
 
 impl<'a> Instructions<'a> for ReturnStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result = vec![];
 
-        let expr = self.return_value.generate_instructions(gen)?;
+        let expr = self.return_value.generate_instructions(ctx)?;
         result.extend(expr);
 
         result.push(Instruction::Return);
@@ -341,15 +338,15 @@ impl<'a> Instructions<'a> for ReturnStatement {
 }
 
 impl<'a> Instructions<'a> for Expression {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         match self {
-            Expression::Integer(int) => Ok(int.generate_instructions(gen)?),
-            Expression::Infix(infix) => Ok(infix.generate_instructions(gen)?),
-            Expression::Identifier(ident) => Ok(ident.generate_instructions(gen)?),
-            Expression::Call(call) => Ok(call.generate_instructions(gen)?),
-            Expression::String(s) => Ok(s.generate_instructions(gen)?),
-            Expression::If(if_expr) => Ok(if_expr.generate_instructions(gen)?),
-            Expression::Index(index_expr) => Ok(index_expr.get_instruction(gen)?),
+            Expression::Integer(int) => Ok(int.generate_instructions(ctx)?),
+            Expression::Infix(infix) => Ok(infix.generate_instructions(ctx)?),
+            Expression::Identifier(ident) => Ok(ident.generate_instructions(ctx)?),
+            Expression::Call(call) => Ok(call.generate_instructions(ctx)?),
+            Expression::String(s) => Ok(s.generate_instructions(ctx)?),
+            Expression::If(if_expr) => Ok(if_expr.generate_instructions(ctx)?),
+            Expression::Index(index_expr) => Ok(index_expr.get_instruction(ctx)?),
 
             x => panic!("{:?}", x),
         }
@@ -357,8 +354,8 @@ impl<'a> Instructions<'a> for Expression {
 }
 
 impl<'a> Instructions<'a> for Identifier {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        let Some(id) = gen.local_manager.get_local_index(&self.value) else {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let Some(id) = ctx.local_ctx.get_local_index(&self.value) else {
             return Err(
                 CompilerError::NotDefined(format!("Variable with name {} is not defined!", self.value))
             );
@@ -369,21 +366,20 @@ impl<'a> Instructions<'a> for Identifier {
 }
 
 impl<'a> Instructions<'a> for LetStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // create the local and set the active local
-        let local_index = gen.local_manager.new_local(self.name.value.clone());
-        gen.local_manager.set_active_local(local_index);
+        let local_index = ctx.local_ctx.new_local(self.name.value.clone());
+        ctx.local_ctx.set_active_local(local_index);
 
         let mut result: Vec<Instruction> = vec![];
-        let let_value = self.value.generate_instructions(gen)?;
+        let let_value = self.value.generate_instructions(ctx)?;
 
         result.extend(let_value);
 
         // create new local
-        gen.code_manager
-            .add_local(self.value_type.clone().try_into()?);
+        ctx.code_ctx.add_local(self.value_type.clone().try_into()?);
 
-        if !gen.local_manager.get_already_set() {
+        if !ctx.local_ctx.get_already_set() {
             result.push(Instruction::LocalSet(local_index));
         }
 
@@ -392,10 +388,10 @@ impl<'a> Instructions<'a> for LetStatement {
 }
 
 impl<'a> Instructions<'a> for BlockStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         for statement in &self.statements {
-            result.extend(statement.generate_instructions(gen)?);
+            result.extend(statement.generate_instructions(ctx)?);
         }
 
         Ok(result)
@@ -403,8 +399,8 @@ impl<'a> Instructions<'a> for BlockStatement {
 }
 
 impl<'a> Instructions<'a> for FunctionStatement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
-        let mut result = self.body.generate_instructions(gen)?;
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let mut result = self.body.generate_instructions(ctx)?;
         result.push(Instruction::End);
 
         Ok(result)
@@ -412,33 +408,33 @@ impl<'a> Instructions<'a> for FunctionStatement {
 }
 
 impl<'a> Instructions<'a> for IfExpr {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result = vec![];
-        let condition = self.condition.generate_instructions(gen)?;
+        let condition = self.condition.generate_instructions(ctx)?;
         result.extend(condition);
 
         result.push(Instruction::If(wasm_encoder::BlockType::Empty));
 
-        let block = self.consequence.generate_instructions(gen)?;
+        let block = self.consequence.generate_instructions(ctx)?;
 
         result.extend(block);
 
         // If we are in a let statement
-        if let Some(id) = gen.local_manager.get_active_local() {
+        if let Some(id) = ctx.local_ctx.get_active_local() {
             result.push(Instruction::LocalSet(id.to_owned()));
 
-            gen.local_manager.already_set(true);
+            ctx.local_ctx.already_set(true);
         }
 
         match &self.alternative {
             Some(alt) => {
                 result.push(Instruction::Else);
 
-                let block = alt.generate_instructions(gen)?;
+                let block = alt.generate_instructions(ctx)?;
 
                 result.extend(block);
 
-                if let Some(id) = gen.local_manager.get_active_local() {
+                if let Some(id) = ctx.local_ctx.get_active_local() {
                     result.push(Instruction::LocalSet(id.to_owned()));
                 }
             }
@@ -453,11 +449,11 @@ impl<'a> Instructions<'a> for IfExpr {
 }
 
 impl<'a> Instructions<'a> for Statement {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         match self {
             Statement::Function(func) => {
                 let types = func.meta.types()?;
-                let type_index = gen.type_manager.new_function_type(types.0.clone(), types.1);
+                let type_index = ctx.type_ctx.new_function_type(types.0.clone(), types.1);
 
                 let params = types
                     .0
@@ -472,38 +468,38 @@ impl<'a> Instructions<'a> for Statement {
                     .collect::<Vec<FunctionParam>>();
 
                 for param in &func.meta.params {
-                    gen.local_manager.new_local(param.0.value.to_owned());
+                    ctx.local_ctx.new_local(param.0.value.to_owned());
                 }
 
-                gen.function_manager
+                ctx.function_ctx
                     .new_function(type_index, func.meta.name.value.clone(), params);
 
-                let block = func.generate_instructions(gen)?;
-                gen.code_manager.new_function_code(block);
+                let block = func.generate_instructions(ctx)?;
+                ctx.code_ctx.new_function_code(block);
 
-                gen.local_manager.reset();
+                ctx.local_ctx.reset();
 
                 Ok(vec![])
             }
 
-            Statement::Expression(expr) => expr.generate_instructions(gen),
+            Statement::Expression(expr) => expr.generate_instructions(ctx),
 
             Statement::Let(var) => {
-                let let_statement = var.generate_instructions(gen);
+                let let_statement = var.generate_instructions(ctx);
 
                 // Exit the let
-                gen.local_manager.exit_active_local();
-                gen.local_manager.already_set(false);
+                ctx.local_ctx.exit_active_local();
+                ctx.local_ctx.already_set(false);
 
                 return let_statement;
             }
-            Statement::Return(ret) => ret.generate_instructions(gen),
-            Statement::Export(export) => export.generate_instructions(gen),
-            Statement::Loop(l) => l.generate_instructions(gen),
-            Statement::Set(set) => set.generate_instructions(gen),
-            Statement::Break(br) => br.generate_instructions(gen),
-            Statement::External(external) => external.generate_instructions(gen),
-            Statement::Builtin(builtin) => builtin.generate_instructions(gen),
+            Statement::Return(ret) => ret.generate_instructions(ctx),
+            Statement::Export(export) => export.generate_instructions(ctx),
+            Statement::Loop(l) => l.generate_instructions(ctx),
+            Statement::Set(set) => set.generate_instructions(ctx),
+            Statement::Break(br) => br.generate_instructions(ctx),
+            Statement::External(external) => external.generate_instructions(ctx),
+            Statement::Builtin(builtin) => builtin.generate_instructions(ctx),
 
             _ => todo!(),
         }
@@ -511,10 +507,10 @@ impl<'a> Instructions<'a> for Statement {
 }
 
 impl<'a> Instructions<'a> for Program {
-    fn generate_instructions(&self, gen: &'a mut Generator) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         for statement in &self.statements {
-            result.extend(statement.generate_instructions(gen)?);
+            result.extend(statement.generate_instructions(ctx)?);
         }
 
         Ok(result)
@@ -522,7 +518,7 @@ impl<'a> Instructions<'a> for Program {
 }
 
 /// Codegen context
-pub struct Generator {
+pub struct Context {
     /// The result of the parser
     ast: Program,
 
@@ -530,45 +526,47 @@ pub struct Generator {
     module: Module,
 
     /// Manages types like function types
-    type_manager: TypeManager,
+    pub(crate) type_ctx: TypeContext,
 
     /// Manages functions
-    function_manager: FunctionManager,
+    pub(crate) function_ctx: FunctionContext,
 
     /// Manages Codes
-    code_manager: CodeManager,
+    pub(crate) code_ctx: CodeContext,
 
-    local_manager: LocalManager,
+    pub(crate) local_ctx: LocalContext,
 
-    memory_manager: MemoryManager,
+    pub(crate) memory_ctx: MemoryContext,
 
-    export_manager: ExportManager,
+    pub(crate) export_ctx: ExportContext,
 
-    import_manager: ImportManager,
+    pub(crate) import_ctx: ImportContext,
 
-    global_manager: GlobalManager,
+    pub(crate) global_ctx: GlobalContext,
 }
 
-impl Generator {
-    /// Creates the new Generator
+impl Context {
+    /// Creates the new Context
     pub fn new(program: Program) -> Self {
         let mem = MemoryType {
-            minimum: 1,
+            minimum: 5,
             maximum: None,
             memory64: false,
             shared: false,
         };
+
         Self {
             ast: program,
-            type_manager: TypeManager::new(),
+            type_ctx: TypeContext::new(),
             module: Module::new(),
-            code_manager: CodeManager::new(),
-            function_manager: FunctionManager::new(),
-            local_manager: LocalManager::new(),
-            export_manager: ExportManager::new(),
-            import_manager: ImportManager::new(),
-            global_manager: GlobalManager::new(),
-            memory_manager: MemoryManager::new(mem),
+            code_ctx: CodeContext::new(),
+            function_ctx: FunctionContext::new(),
+            local_ctx: LocalContext::new(),
+            export_ctx: ExportContext::new(),
+            import_ctx: ImportContext::new(),
+            global_ctx: GlobalContext::new(),
+            //builtin_context: BuiltinContext::new(),
+            memory_ctx: MemoryContext::new(mem),
         }
     }
 
@@ -583,53 +581,44 @@ impl Generator {
     /// Bootstraps the default variables
     /// like memory offset
     pub fn bootstrap(&mut self) {
-        self.global_manager
+        self.global_ctx
             // the value 0 is deferent in some runtimes
             .add_global_int("mem_offset", ConstExpr::i32_const(0), true);
-
-        self.function_manager.new_builtin_function(
-            "malloc",
-            vec![FunctionParam {
-                id: 0,
-                name: "size".to_string(),
-                param_type: ValType::I32,
-            }],
-        );
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
         // export memory
-        self.export_manager.export_memory("memory", 0);
+        self.export_ctx.export_memory("memory", 0);
 
         //TODO
-        self.module.section(&self.type_manager.get_section());
-        self.module.section(&self.import_manager.get_section());
-        self.module.section(&self.function_manager.get_section());
+        self.module.section(&self.type_ctx.get_section());
+        self.module.section(&self.import_ctx.get_section());
+        self.module.section(&self.function_ctx.get_section());
         self.module.section(&TableSection::new());
 
-        let (mem_section, data_section) = &self.memory_manager.get_sections();
+        let (mem_section, data_section) = &self.memory_ctx.get_sections();
 
         self.module.section(mem_section);
 
-        self.global_manager.apply_globals();
-        self.module.section(&self.global_manager.get_section());
+        self.global_ctx.apply_globals();
+        self.module.section(&self.global_ctx.get_section());
 
-        self.module.section(&self.export_manager.get_section());
+        self.module.section(&self.export_ctx.get_section());
         self.module.section(&ElementSection::new());
 
-        self.module.section(&self.code_manager.get_section());
+        self.module.section(&self.code_ctx.get_section());
         self.module.section(data_section);
 
         self.module.clone().finish()
     }
 }
 
-pub struct TypeManager {
+pub struct TypeContext {
     section: TypeSection,
     types_index: u32,
 }
 
-impl TypeManager {
+impl TypeContext {
     pub fn new() -> Self {
         Self {
             section: TypeSection::new(),
@@ -670,20 +659,18 @@ pub struct FunctionParam {
     param_type: ValType,
 }
 
-pub struct FunctionManager {
-    builtin_functions: HashMap<String, FunctionData>,
+pub struct FunctionContext {
     functions: HashMap<String, FunctionData>,
     section: FunctionSection,
     functions_index: u32,
     current_function: Option<FunctionData>,
 }
 
-impl FunctionManager {
+impl FunctionContext {
     pub fn new() -> Self {
         Self {
             section: FunctionSection::new(),
             functions_index: 0,
-            builtin_functions: HashMap::new(),
             functions: HashMap::new(),
             current_function: None,
         }
@@ -695,27 +682,6 @@ impl FunctionManager {
 
     pub fn get_function(&self, function_name: &String) -> Option<&FunctionData> {
         self.functions.get(function_name)
-    }
-
-    pub fn get_builtin_function(&mut self, function_name: &String) -> Option<&FunctionData> {
-        self.builtin_functions.get(function_name)
-    }
-
-    pub fn new_builtin_function(&mut self, name: &str, params: Vec<FunctionParam>) {
-        let new_fn = FunctionData {
-            name: name.to_string(),
-            params,
-            id: self.functions_index,
-        };
-
-        self.builtin_functions
-            .insert(name.to_string(), new_fn.clone());
-        //self.functions_index += 1;
-    }
-
-    pub fn add_builtin_function_type(&mut self, type_index: u32) {
-        self.section.function(type_index);
-        self.functions_index += 1;
     }
 
     pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
@@ -750,12 +716,12 @@ impl FunctionManager {
     }
 }
 
-pub struct CodeManager {
+pub struct CodeContext {
     section: CodeSection,
     current_locals: Vec<ValType>,
 }
 
-impl CodeManager {
+impl CodeContext {
     pub fn new() -> Self {
         Self {
             section: CodeSection::new(),
@@ -784,7 +750,7 @@ impl CodeManager {
         self.section.clone()
     }
 }
-pub struct LocalManager {
+pub struct LocalContext {
     /// name, id
     ///
     /// for example when new let were created
@@ -809,8 +775,8 @@ pub struct LocalManager {
     already_set: bool,
 }
 
-impl LocalManager {
-    /// Create new local manager
+impl LocalContext {
+    /// Create new local ctx
     pub fn new() -> Self {
         Self {
             locals: HashMap::new(),
@@ -820,9 +786,9 @@ impl LocalManager {
         }
     }
 
-    pub fn local_exists(&self, name: &String) -> bool {
-        self.locals.contains_key(name)
-    }
+    //pub fn local_exists(&self, name: &String) -> bool {
+    //    self.locals.contains_key(name)
+    //}
 
     pub fn get_local_index(&self, name: &String) -> Option<&u32> {
         self.locals.get(name)
@@ -867,14 +833,14 @@ impl LocalManager {
     }
 }
 
-pub struct MemoryManager {
+pub struct MemoryContext {
     memory_section: MemorySection,
     data_section: DataSection,
 
     offset: i32,
 }
 
-impl MemoryManager {
+impl MemoryContext {
     pub fn new(memory: MemoryType) -> Self {
         let mut memory_section = MemorySection::new();
         memory_section.memory(memory);
@@ -902,18 +868,16 @@ impl MemoryManager {
         ptr
     }
 
-    pub fn free(&mut self, id: i32) {}
-
     pub fn get_sections(&self) -> (MemorySection, DataSection) {
         (self.memory_section.clone(), self.data_section.clone())
     }
 }
 
-pub struct ExportManager {
+pub struct ExportContext {
     section: ExportSection,
 }
 
-impl ExportManager {
+impl ExportContext {
     pub fn new() -> Self {
         Self {
             section: ExportSection::new(),
@@ -933,11 +897,11 @@ impl ExportManager {
     }
 }
 
-pub struct ImportManager {
+pub struct ImportContext {
     section: ImportSection,
 }
 
-impl ImportManager {
+impl ImportContext {
     pub fn new() -> Self {
         Self {
             section: ImportSection::new(),
@@ -958,14 +922,14 @@ impl ImportManager {
     }
 }
 
-pub struct GlobalManager {
+pub struct GlobalContext {
     section: GlobalSection,
     /// <global_name, id>
     globals: BTreeMap<String, (u32, GlobalType, ConstExpr)>,
     globals_id: u32,
 }
 
-impl GlobalManager {
+impl GlobalContext {
     pub fn new() -> Self {
         Self {
             section: GlobalSection::new(),

@@ -1,0 +1,22 @@
+external console {
+    fn log(n: i32);
+}
+
+builtin fn malloc(size: i32): i32;
+
+builtin fn free(size: i32): i32;
+
+export fn main() {
+    let x: i32 = malloc(5);
+
+    x[0] = 1;
+    x[1] = 2;
+
+    free(5);
+
+    let y: i32 = malloc(2);
+
+    y[0] = 3;
+
+    log(y);
+}

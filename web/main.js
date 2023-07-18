@@ -8,7 +8,7 @@ const wasmInstance = async (wasmModule, imports) =>
 
 const get_exports = (instance) => instance.instance.exports;
 
-const read_chars = (values, ptr) => {
+function read_chars(values, ptr) {
     const chars = [];
 
     let i = ptr;
@@ -57,15 +57,30 @@ class Reader {
                 child.innerText = element_body;
                 window.document.body.appendChild(child);
             }
+        },
+        io: {
+            fetch: async (url_ptr) => {
+                const url = string_from_chars(read_chars(reader.get_mem(), url_ptr));
+                const res = await fetch(url);
+                const content = await res.text();
+
+                const encoder = new TextEncoder();
+                const encodedString = encoder.encode(content);
+
+                const ptr = exports.malloc_wrapper(encodedString.length + 1);
+                console.log(exports);
+
+                return ptr;
+            }
         }
     };
 
-    const wasm = await fetch_source("./malloc.wasm");
+    const wasm = await fetch_source("./free.wasm");
     const exports = await wasmInstance(wasm, imports)
         .then(ins => get_exports(ins));
     reader.set_mem(new Uint8Array(exports.memory.buffer));
 
     exports.main();
-    //console.log(new Uint8Array(exports.memory.buffer));
+    console.log(new Uint8Array(exports.memory.buffer).slice(0, 32));
 })()
     .catch(x => console.error(x))
