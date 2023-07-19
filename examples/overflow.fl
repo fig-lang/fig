@@ -1,0 +1,11 @@
+builtin malloc(size: i32): i32;
+
+export fn main() {
+    let space: i32 = malloc(3);
+
+    space[0] = 123;
+    space[1] = 123;
+    space[2] = 123;
+
+    space[3] = 123;
+}
