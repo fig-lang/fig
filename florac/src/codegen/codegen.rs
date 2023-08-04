@@ -12,10 +12,10 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BreakStatement, BuiltinStatement, CallExpr, ExportStatement, Expression,
-        ExternalStatement, FunctionMeta, FunctionStatement, Identifier, IfExpr, IndexExpr,
-        InfixExpr, Integer, LetStatement, LoopStatement, Program, ReturnStatement, SetStatement,
-        Statement, StringExpr,
+        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, ExportStatement,
+        Expression, ExternalStatement, FunctionMeta, FunctionStatement, Identifier, IfExpr,
+        IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, RefValue,
+        ReturnStatement, SetStatement, Statement, StringExpr,
     },
 };
 
@@ -106,6 +106,23 @@ impl<'a> Instructions<'a> for StringExpr {
     }
 }
 
+impl<'a> Instructions<'a> for RefValue {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        match self.value.as_ref() {
+            Expression::Identifier(ident) => {
+                let Some(id) = ctx.local_ctx.get_local_index(&ident.value) else {
+                    return Err(
+                        CompilerError::NotDefined(format!("Variable with name {} is not defined!", &ident.value))
+                    );
+                };
+
+                return Ok(vec![Instruction::I32Const(*id as i32)]);
+            }
+            _ => panic!(),
+        }
+    }
+}
+
 impl<'a> Instructions<'a> for Token {
     fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // Todo check type
@@ -118,8 +135,18 @@ impl<'a> Instructions<'a> for Token {
             Token::NotEqual => Ok(vec![Instruction::I32Ne]),
             Token::LessThan => Ok(vec![Instruction::I32LeS]),
             Token::GreaterThan => Ok(vec![Instruction::I32GtS]),
+            Token::Mod => Ok(vec![Instruction::I32RemS]),
 
             _ => todo!(),
+        }
+    }
+}
+
+impl<'a> Instructions<'a> for BooleanExpr {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        match self.value {
+            true => Ok(vec![Instruction::I32Const(1)]),
+            false => Ok(vec![Instruction::I32Const(0)]),
         }
     }
 }
@@ -194,9 +221,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
             }
 
             "free" => {
-                let type_index = ctx
-                    .type_ctx
-                    .new_function_type(vec![ValType::I32], vec![]);
+                let type_index = ctx.type_ctx.new_function_type(vec![ValType::I32], vec![]);
 
                 ctx.function_ctx
                     .new_function(type_index, "free".to_string(), vec![]);
@@ -346,7 +371,10 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Call(call) => Ok(call.generate_instructions(ctx)?),
             Expression::String(s) => Ok(s.generate_instructions(ctx)?),
             Expression::If(if_expr) => Ok(if_expr.generate_instructions(ctx)?),
+            Expression::Boolean(bool_expr) => Ok(bool_expr.generate_instructions(ctx)?),
+
             Expression::Index(index_expr) => Ok(index_expr.get_instruction(ctx)?),
+            Expression::Ref(ref_expr) => Ok(ref_expr.generate_instructions(ctx)?),
 
             x => panic!("{:?}", x),
         }

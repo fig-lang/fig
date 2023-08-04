@@ -44,6 +44,7 @@ impl Lexer {
                     Token::Bang
                 }
             }
+            b'%' => Token::Mod,
             b'>' => Token::GreaterThan,
             b'<' => Token::LessThan,
             b'*' => Token::Asterisk,
@@ -58,6 +59,8 @@ impl Lexer {
             }
 
             b'"' => Token::String(self.read_string()),
+
+            b'&' => Token::Ref,
 
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => match self.peek() {
                 b'0'..=b'9' => {

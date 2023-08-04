@@ -3,6 +3,7 @@ mod lexer;
 mod parser;
 mod types;
 
+use wasm_bindgen::prelude::*;
 use lexer::lexer::Lexer;
 use parser::ast::Program;
 use parser::parser::{Parse, Parser};
@@ -20,6 +21,11 @@ fn read_source_file(file_path: PathBuf) -> io::Result<String> {
     file.read_to_string(&mut buf)?;
 
     Ok(buf)
+}
+
+#[wasm_bindgen]
+pub fn wasm() -> u8 {
+    1
 }
 
 fn main() {

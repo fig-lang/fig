@@ -11,7 +11,7 @@ impl<'a> Parse<'a> for Type {
 
         let type_value = Type::from(type_ident.value.clone());
 
-        if type_value == Type::Unknown {
+        if type_value == Type::NotDefined {
             return Err(ParserError::unexpected(type_ident.value));
         }
 
@@ -44,6 +44,7 @@ impl Statement {
         if parser.next_token_is(Token::Semicolon) {
             parser.next_token();
         }
+
         Ok(expr)
     }
 }
@@ -106,6 +107,7 @@ pub struct LetStatement {
 }
 
 impl<'a> Parse<'a> for LetStatement {
+    // TODO: make the type optional
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         // pass the Let token
         parser.next_token();
@@ -321,15 +323,26 @@ pub enum Expression {
     Call(CallExpr),
     String(StringExpr),
     Index(IndexExpr),
+    Ref(RefValue),
+    DeRef(DeRef),
 }
 
 impl<'a> Parse<'a> for Expression {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         let mut left_expr = match &parser.current_token {
             Token::Int(_) => Expression::Integer(Integer::parse(parser, precedence.clone())?),
+
+            //Token::LBrack => Expression::Index(IndexExpr::parse(parser, precedence.clone())?),
+            Token::Ref => Expression::Ref(RefValue::parse(parser, precedence.clone())?),
+            
+            // BUG: Determine the *pointer with 1 * x
+            // Or maybe we can use deref kind of keyword
+            Token::Asterisk => Expression::DeRef(DeRef::parse(parser, precedence.clone())?),
+
             Token::Ident(_) => {
                 if parser.next_token_is(Token::LBrack) {
                     Expression::Index(IndexExpr::parse(parser, precedence.clone())?)
+                    //Expression::parse(parser, Some(Precedence::Lowest))?
                 } else {
                     Expression::Identifier(Identifier::parse(parser, precedence.clone())?)
                 }
@@ -362,6 +375,7 @@ impl<'a> Parse<'a> for Expression {
             | Token::Asterisk
             | Token::Equal
             | Token::NotEqual
+            | Token::Mod
             | Token::LessThan
             | Token::GreaterThan => {
                 Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?)
@@ -417,6 +431,61 @@ impl<'a> Parse<'a> for StringExpr {
         }
     }
 }
+
+// TODO: what am i going to do with this ?
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefType {
+    pub(crate) ty: Type,
+}
+
+impl<'a> Parse<'a> for RefType {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        // Skip the & char
+        parser.next_token();
+
+        // now parse the ref type
+        let ty = Type::parse(parser, _precedence)?;
+
+        Ok(Self { ty })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefValue {
+    pub(crate) value: Box<Expression>,
+}
+
+impl<'a> Parse<'a> for RefValue {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // Skip the & char
+        parser.next_token();
+
+        // now parse the ref type
+        let value = Expression::parse(parser, precedence)?;
+
+        Ok(Self {
+            value: Box::new(value),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeRef {
+    pub(crate) ident: Identifier,
+}
+
+impl<'a> Parse<'a> for DeRef {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // Skip the * char
+        parser.next_token();
+
+        // now parse the ref type
+        let ident = Identifier::parse(parser, precedence)?;
+
+        Ok(Self { ident })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexExpr {
     pub(crate) variable: Identifier,
@@ -658,7 +727,7 @@ impl CallExpr {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BooleanExpr {
-    value: bool,
+    pub(crate) value: bool,
 }
 
 impl<'a> Parse<'a> for BooleanExpr {
@@ -1095,6 +1164,38 @@ mod tests {
                 }),
             ],
         }))];
+
+        for i in 0..program.statements.len() {
+            assert_eq!(program.statements[i], expected_statements[i]);
+        }
+    }
+
+    #[test]
+    fn test_expression_with_index() {
+        let source = r#"let x: i32 = lhs[i] % 65536;"#;
+
+        let mut lexer = Lexer::new(source.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = Program::parse(&mut parser, Some(Precedence::Lowest)).unwrap();
+
+        let expected_statements = [Statement::Let(LetStatement {
+            value_type: Type::I32,
+            name: Identifier {
+                value: "x".to_string(),
+            },
+            value: Expression::Infix(InfixExpr {
+                left: Box::new(Expression::Index(IndexExpr {
+                    variable: Identifier {
+                        value: "lhs".to_string(),
+                    },
+                    index: Box::new(Expression::Identifier(Identifier {
+                        value: "i".to_string(),
+                    })),
+                })),
+                operator: Token::Mod,
+                right: Box::new(Expression::Integer(Integer { value: 65536 })),
+            }),
+        })];
 
         for i in 0..program.statements.len() {
             assert_eq!(program.statements[i], expected_statements[i]);

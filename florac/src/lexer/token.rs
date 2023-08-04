@@ -9,6 +9,7 @@ pub enum Token {
     Eof,
     Assign,
 
+    Mod,
     Bang,
     Minus,
     ForwardSlash,
@@ -44,6 +45,8 @@ pub enum Token {
     False,
 
     String(String),
+
+    Ref,
 }
 
 impl Display for Token {
@@ -57,6 +60,7 @@ impl Display for Token {
             Eof => write!(f, "End of file"),
             Assign => write!(f, "="),
 
+            Mod => write!(f, "%"),
             Bang => write!(f, "!"),
             Minus => write!(f, "-"),
             ForwardSlash => write!(f, "/"),
@@ -92,6 +96,8 @@ impl Display for Token {
             Builtin => write!(f, "builtin"),
 
             String(s) => write!(f, "'{}'", s),
+
+            Ref => write!(f, "&"),
         }
     }
 }

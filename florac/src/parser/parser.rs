@@ -25,6 +25,7 @@ impl Precedence {
             Token::Plus => Some(Self::Sum),
             Token::Minus => Some(Self::Sum),
             Token::ForwardSlash => Some(Self::Product),
+            Token::Mod => Some(Self::Product),
             Token::Asterisk => Some(Self::Product),
             Token::Lparen => Some(Self::Call),
 

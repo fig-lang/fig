@@ -75,12 +75,14 @@ class Reader {
         }
     };
 
-    const wasm = await fetch_source("./free.wasm");
+    const wasm = await fetch_source("./flora_bg.wasm");
     const exports = await wasmInstance(wasm, imports)
         .then(ins => get_exports(ins));
     reader.set_mem(new Uint8Array(exports.memory.buffer));
 
-    exports.main();
+    console.log(exports);
+    //exports.main();
+
     console.log(new Uint8Array(exports.memory.buffer).slice(0, 32));
 })()
     .catch(x => console.error(x))

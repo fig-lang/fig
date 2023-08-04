@@ -1,0 +1,12 @@
+external console {
+    fn log(n: i32);
+}
+
+export fn main() {
+    let x: i32 = 10;
+    let x_ref: i32 = &x;
+
+    *x_ref = 200;
+
+    log(x);
+}

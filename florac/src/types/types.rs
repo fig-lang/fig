@@ -12,7 +12,9 @@ pub enum Type {
 
     String,
 
-    Unknown,
+    Bool,
+
+    NotDefined,
 }
 
 impl From<String> for Type {
@@ -23,7 +25,8 @@ impl From<String> for Type {
             "f32" => Self::F32,
             "f64" => Self::F64,
             "string" => Self::String,
-            _ => Self::Unknown,
+            "bool" => Self::Bool,
+            _ => Self::NotDefined,
         }
     }
 }
@@ -37,6 +40,11 @@ impl TryInto<ValType> for Type {
             Self::I64 => Ok(ValType::I64),
             Self::F32 => Ok(ValType::F32),
             Self::F64 => Ok(ValType::F64),
+
+            // Its 0 or 1
+            //
+            // TODO: Check if we can have a type with 1 byte ?
+            Self::Bool => Ok(ValType::I32),
 
             // pointer of the string
             Self::String => Ok(ValType::I32),

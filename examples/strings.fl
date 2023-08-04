@@ -1,4 +1,38 @@
+external console {
+    fn log(n: i32);
+    fn log_str(str: string);
+}
+
 builtin fn malloc(size: i32): i32;
 
-fn cmp_string(): i32 {
+fn cmp_string(lhs: string, rhs: string): bool {
+    let i: i32 = 0;
+
+    loop {
+        if (lhs[i] == 0) { break; }
+        if (rhs[i] == 0) { break; }
+
+        let left_num: i32  = lhs[i] % 65536;
+        let right_num: i32 = rhs[i] % 65536;
+
+        if (left_num != right_num) {
+            log_str(lhs);
+            log_str(rhs);
+
+            return false;
+        }
+
+        i = i + 1;
+    }
+
+    return true;
+}
+
+export fn main() {
+    let left: string  = "HelloWorld";
+    let right: string = "HelloWorld";
+
+    let res: bool = cmp_string(left, right);
+
+    log(res);
 }
