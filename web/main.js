@@ -1,10 +1,11 @@
 // For testing the Outputs
+import { initSync, wasm_main } from "./pkg/flora.js";
 
 const fetch_source = async (path) =>
     await fetch(path);
 
-const wasmInstance = async (wasmModule, imports) =>
-    await WebAssembly.instantiateStreaming(wasmModule, imports);
+const wasmInstance = (wasmModule) =>
+    new WebAssembly.Module(wasmModule);
 
 const get_exports = (instance) => instance.instance.exports;
 
@@ -41,6 +42,11 @@ class Reader {
     }
 }
 
+const DOM = {
+    compile_btn: document.getElementById("compile-btn"),
+    editor: () => document.getElementById("editor"),
+};
+
 (async () => {
     const reader = new Reader();
     const imports = {
@@ -75,14 +81,21 @@ class Reader {
         }
     };
 
-    const wasm = await fetch_source("./flora_bg.wasm");
-    const exports = await wasmInstance(wasm, imports)
-        .then(ins => get_exports(ins));
-    reader.set_mem(new Uint8Array(exports.memory.buffer));
 
-    console.log(exports);
-    //exports.main();
+    const wasm = await fetch_source("./pkg/flora_bg.wasm");
+    const buf = await wasm.arrayBuffer();
+    const mod = wasmInstance(buf);
 
-    console.log(new Uint8Array(exports.memory.buffer).slice(0, 32));
+    initSync(mod);
+
+    DOM.compile_btn.addEventListener("click", async () => {
+        const result = wasm_main(DOM.editor().value);
+
+        const program = wasmInstance(result);
+
+        const wasm = await WebAssembly.instantiate(program, imports);
+
+        wasm.exports.main();
+    });
 })()
     .catch(x => console.error(x))

@@ -2,6 +2,7 @@
 name = "flora"
 version = "0.1.0"
 edition = "2021"
+description = "flora compiler"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
