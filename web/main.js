@@ -44,8 +44,48 @@ class Reader {
 
 const DOM = {
     compile_btn: document.getElementById("compile-btn"),
-    editor: () => document.getElementById("editor"),
+    editor: document.getElementById("editor"),
+
+    info: {
+        memory_view: document.querySelector(".memory"),
+    }
 };
+
+
+function push_to_memory_view(item, str = false, bgcolor = "#a0a0a0") {
+    const item_element = document.createElement("div");
+    item_element.className = "item";
+    item_element.style.background = bgcolor;
+    item_element.innerHTML = `${str ? String.fromCharCode(item) : item}`;
+
+    DOM.info.memory_view.append(item_element);
+}
+
+function clear_memory_view() {
+    DOM.info.memory_view.innerHTML = "";
+}
+
+let prev_mem;
+
+/**
+ * @param {DataView} array 
+ */
+function update_memory_view(array) {
+    clear_memory_view();
+
+    let n = 0;
+    do {
+        if (prev_mem && prev_mem.getInt8(n) !== array.getInt8(n)) {
+            push_to_memory_view(array.getInt8(n), false, `rgb(231, 188, 107)`);
+        }
+        else {
+            push_to_memory_view(array.getInt8(n), false);
+        }
+        n += 1;
+    } while (array.getInt16(n) !== 0);
+
+    prev_mem = array;
+}
 
 (async () => {
     const reader = new Reader();
@@ -89,13 +129,16 @@ const DOM = {
     initSync(mod);
 
     DOM.compile_btn.addEventListener("click", async () => {
-        const result = wasm_main(DOM.editor().value);
+        const result = wasm_main(DOM.editor.value);
 
         const program = wasmInstance(result);
 
         const wasm = await WebAssembly.instantiate(program, imports);
 
         wasm.exports.main();
+
+        console.log(wasm.exports)
+        update_memory_view(new DataView(wasm.exports.memory.buffer))
     });
 })()
     .catch(x => console.error(x))

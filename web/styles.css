@@ -11,3 +11,18 @@ body {
     display: flex;
     flex-direction: column;
 }
+
+.info {
+    width: 100%;
+}
+
+.info .memory {
+    display: flex;
+}
+
+.info .memory .item {
+    margin: 1px;
+    padding: 10px;
+    border: 1px solid #000;
+    background: #a0a0a0;
+}
