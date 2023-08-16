@@ -1,30 +1,35 @@
 // For testing the Outputs
 import { initSync, wasm_main } from "./pkg/flora.js";
 
+const PRELUDE = `external console { fn log(n: i32); fn log_str(s: string); }`;
+
+const MAIN_EXAMPLE = `export fn main() {
+    let x: string = "Hello World";
+    log_str(x);
+}
+`;
+
 const fetch_source = async (path) =>
     await fetch(path);
 
 const wasmInstance = (wasmModule) =>
     new WebAssembly.Module(wasmModule);
 
-const get_exports = (instance) => instance.instance.exports;
-
 function read_chars(values, ptr) {
-    const chars = [];
+    let chars = [];
+    let n = ptr;
 
-    let i = ptr;
-    while (values[i] != 0) {
-        chars.push(values[i]);
-        i += 1;
-    }
+    do {
+        chars.push(values.getInt8(n));
+        n += 1;
+    } while (values.getInt8(n) !== 0);
 
     return chars;
 }
 
-const string_from_chars = (chars) =>
-    chars.map(char => String.fromCharCode(char)).join("");
-
-const log_str = (mem, ptr) => console.log(string_from_chars(read_chars(mem, ptr)));
+function log_str(mem, ptr) {
+    push_to_console(string_from_chars(read_chars(mem, ptr)));
+}
 
 class Reader {
     mem = null;
@@ -48,9 +53,20 @@ const DOM = {
 
     info: {
         memory_view: document.querySelector(".memory"),
-    }
+    },
+
+    console: document.getElementById("console")
 };
 
+/**
+ * @param {string} value 
+ */
+function push_to_console(value) {
+    const item_element = document.createElement("p");
+    item_element.innerHTML = value;
+
+    DOM.console.append(item_element);
+}
 
 function push_to_memory_view(item, str = false, bgcolor = "#a0a0a0") {
     const item_element = document.createElement("div");
@@ -87,12 +103,16 @@ function update_memory_view(array) {
     prev_mem = array;
 }
 
+function string_from_chars(chars) {
+    return chars.map(char => String.fromCharCode(char)).join("");
+}
+
 (async () => {
     const reader = new Reader();
     const imports = {
         console: {
             log_str: (ptr) => log_str(reader.get_mem(), ptr),
-            log: (n) => console.log(n),
+            log: (n) => push_to_console(n),
         },
         element: {
             // element ptr and text ptr
@@ -114,13 +134,13 @@ function update_memory_view(array) {
                 const encodedString = encoder.encode(content);
 
                 const ptr = exports.malloc_wrapper(encodedString.length + 1);
-                console.log(exports);
 
                 return ptr;
             }
         }
     };
 
+    DOM.editor.value = MAIN_EXAMPLE;
 
     const wasm = await fetch_source("./pkg/flora_bg.wasm");
     const buf = await wasm.arrayBuffer();
@@ -129,16 +149,20 @@ function update_memory_view(array) {
     initSync(mod);
 
     DOM.compile_btn.addEventListener("click", async () => {
-        const result = wasm_main(DOM.editor.value);
+        DOM.console.innerHTML = "";
+        try {
+            const result = wasm_main(PRELUDE + DOM.editor.value);
+            const program = wasmInstance(result);
 
-        const program = wasmInstance(result);
+            const wasm = await WebAssembly.instantiate(program, imports);
+            reader.set_mem(new DataView(wasm.exports.memory.buffer));
 
-        const wasm = await WebAssembly.instantiate(program, imports);
+            wasm.exports.main();
 
-        wasm.exports.main();
-
-        console.log(wasm.exports)
-        update_memory_view(new DataView(wasm.exports.memory.buffer))
+            update_memory_view(new DataView(wasm.exports.memory.buffer))
+        } catch (error) {
+            console.log(error);
+        }
     });
 })()
     .catch(x => console.error(x))

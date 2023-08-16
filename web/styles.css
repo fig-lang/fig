@@ -3,7 +3,17 @@
     padding: 0;
 }
 
+
 body {
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    padding: 10px;
+    color: #FFF;
+}
+
+.right {
+    margin-bottom: 10px;
     display: flex;
 }
 
@@ -14,15 +24,36 @@ body {
 
 .info {
     width: 100%;
+    margin: 10px;
+    border-left: 1px solid #a0a0a0;
+    color: #fff;
+    padding: 10px;
 }
 
 .info .memory {
     display: flex;
+    width: 10px;
 }
 
 .info .memory .item {
     margin: 1px;
     padding: 10px;
-    border: 1px solid #000;
-    background: #a0a0a0;
+    border: 1px solid #a0a0a0;
+    border-radius: 5px;
+}
+
+textarea {
+    outline: none;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    background: #232323;
+    color: #fff;
+    font-size: 20px;
+}
+
+#console {
+    color: #FFF;
+    height: 15rem;
+    padding: 10px;
 }
