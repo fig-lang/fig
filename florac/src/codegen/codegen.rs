@@ -26,6 +26,8 @@ pub enum CompilerError {
     NotDefined(String),
 }
 
+type CResult<T> = Result<T, CompilerError>;
+
 pub trait WasmTypes {
     type Output;
     fn types(&self) -> Self::Output
@@ -52,8 +54,6 @@ impl WasmTypes for FunctionMeta {
         Ok((param_type, return_type))
     }
 }
-
-type CResult<T> = Result<T, CompilerError>;
 
 pub trait Instructions<'a> {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>>
@@ -118,6 +118,9 @@ impl<'a> Instructions<'a> for RefValue {
 
                 return Ok(vec![Instruction::I32Const(*id as i32)]);
             }
+
+            Expression::Index(index) => Ok(index.get_offset(ctx)?),
+
             _ => panic!(),
         }
     }
@@ -575,7 +578,7 @@ pub struct Context {
 
 impl Context {
     /// Creates the new Context
-    pub fn new(program: Program) -> Self {
+    pub fn new(program: Program, memory_offset: i32) -> Self {
         let mem = MemoryType {
             minimum: 5,
             maximum: None,
@@ -594,7 +597,7 @@ impl Context {
             import_ctx: ImportContext::new(),
             global_ctx: GlobalContext::new(),
             //builtin_context: BuiltinContext::new(),
-            memory_ctx: MemoryContext::new(mem),
+            memory_ctx: MemoryContext::new(mem, memory_offset),
         }
     }
 
@@ -869,14 +872,14 @@ pub struct MemoryContext {
 }
 
 impl MemoryContext {
-    pub fn new(memory: MemoryType) -> Self {
+    pub fn new(memory: MemoryType, starting_offset: i32) -> Self {
         let mut memory_section = MemorySection::new();
         memory_section.memory(memory);
 
         Self {
             memory_section,
             data_section: DataSection::new(),
-            offset: 0,
+            offset: starting_offset,
         }
     }
 
@@ -886,6 +889,7 @@ impl MemoryContext {
         D: IntoIterator<Item = u8>,
         D::IntoIter: ExactSizeIterator,
     {
+        // Store the before value, we will need this later
         let ptr = self.offset;
         let offset = ConstExpr::i32_const(ptr);
 

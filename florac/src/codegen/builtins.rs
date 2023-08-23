@@ -1,8 +1,6 @@
-use wasm_encoder::Instruction;
+use wasm_encoder::Instruction::{self, *};
 
 pub fn malloc<'a>() -> Vec<Instruction<'a>> {
-    use wasm_encoder::Instruction::*;
-
     vec![
         GlobalGet(0),
         LocalSet(1),
@@ -17,13 +15,6 @@ pub fn malloc<'a>() -> Vec<Instruction<'a>> {
 }
 
 pub fn free<'a>() -> Vec<Instruction<'a>> {
-    use wasm_encoder::Instruction::*;
-
-    vec![
-        GlobalGet(0),
-        LocalGet(0),
-        I32Sub,
-        GlobalSet(0),
-        End,
-    ]
+    vec![GlobalGet(0), LocalGet(0), I32Sub, GlobalSet(0), End]
 }
+
