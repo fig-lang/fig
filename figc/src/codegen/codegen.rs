@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    vec,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -17,6 +14,7 @@ use crate::{
         IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, RefValue,
         ReturnStatement, SetStatement, Statement, StringExpr,
     },
+    types::types::Type,
 };
 
 use super::builtins::{free, malloc};
@@ -268,11 +266,32 @@ impl<'a> Instructions<'a> for BreakStatement {
 impl IndexExpr {
     fn get_instruction<'a>(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut offset = self.get_offset(ctx)?;
-        offset.push(Instruction::I32Load(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
+
+        // Get the variable type
+        let variable = ctx.local_ctx.get_local_type(&self.variable.value).unwrap();
+
+        match variable {
+            Type::String => {
+                offset.extend([
+                    Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }),
+                    Instruction::I32Const(65536),
+                    Instruction::I32RemS,
+                ]);
+            }
+
+            _ => {
+                offset.push(Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+            }
+        }
+
         Ok(offset)
     }
 
@@ -399,7 +418,9 @@ impl<'a> Instructions<'a> for Identifier {
 impl<'a> Instructions<'a> for LetStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // create the local and set the active local
-        let local_index = ctx.local_ctx.new_local(self.name.value.clone());
+        let local_index = ctx
+            .local_ctx
+            .new_local(self.name.value.clone(), self.value_type.clone());
         ctx.local_ctx.set_active_local(local_index);
 
         let mut result: Vec<Instruction> = vec![];
@@ -498,8 +519,9 @@ impl<'a> Instructions<'a> for Statement {
                     })
                     .collect::<Vec<FunctionParam>>();
 
-                for param in &func.meta.params {
-                    ctx.local_ctx.new_local(param.0.value.to_owned());
+                for (name, ty) in &func.meta.params {
+                    ctx.local_ctx
+                        .new_local(name.value.to_owned(), ty.to_owned());
                 }
 
                 ctx.function_ctx
@@ -790,6 +812,8 @@ pub struct LocalContext {
     /// wich first let index is 0 second is 1 and so on
     locals: HashMap<String, u32>,
 
+    locals_type: HashMap<String, Type>,
+
     /// Index
     locals_index: u32,
 
@@ -811,6 +835,7 @@ impl LocalContext {
     pub fn new() -> Self {
         Self {
             locals: HashMap::new(),
+            locals_type: HashMap::new(),
             locals_index: 0,
             active_local: None,
             already_set: false,
@@ -850,13 +875,20 @@ impl LocalContext {
         &self.already_set
     }
 
+    /// Returns the type of local
+    pub fn get_local_type(&self, name: &String) -> Option<&Type> {
+        self.locals_type.get(name)
+    }
+
     /// Creates new local var
     ///
     /// and returns the index
     /// if its exists will overwrite it
-    pub fn new_local(&mut self, name: String) -> u32 {
+    pub fn new_local(&mut self, name: String, ty: Type) -> u32 {
         let index = self.locals_index;
-        self.locals.insert(name, self.locals_index.clone());
+
+        self.locals.insert(name.clone(), self.locals_index.clone());
+        self.locals_type.insert(name, ty);
 
         self.locals_index += 1;
 

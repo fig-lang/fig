@@ -12,13 +12,7 @@ fn cmp_string(lhs: string, rhs: string): bool {
         if (lhs[i] == 0) { break; }
         if (rhs[i] == 0) { break; }
 
-        let left_num: i32  = lhs[i] % 65536;
-        let right_num: i32 = rhs[i] % 65536;
-
-        if (left_num != right_num) {
-            log_str(lhs);
-            log_str(rhs);
-
+        if (lhs[i] != rhs[i]) {
             return false;
         }
 

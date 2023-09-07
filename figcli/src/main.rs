@@ -1,12 +1,6 @@
-mod codegen;
-mod lexer;
-mod parser;
-mod types;
-
-use wasm_bindgen::prelude::*;
-use lexer::lexer::Lexer;
-use parser::ast::Program;
-use parser::parser::{Parse, Parser};
+use florac::lexer::lexer::Lexer;
+use florac::parser::ast::Program;
+use florac::parser::parser::{Parse, Parser};
 use std::env::args;
 use std::fs::File;
 use std::io;
@@ -21,11 +15,6 @@ fn read_source_file(file_path: PathBuf) -> io::Result<String> {
     file.read_to_string(&mut buf)?;
 
     Ok(buf)
-}
-
-#[wasm_bindgen]
-pub fn wasm() -> u8 {
-    1
 }
 
 fn main() {

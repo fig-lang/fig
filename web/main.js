@@ -1,7 +1,27 @@
-// For testing the Outputs
-import { initSync, wasm_main } from "./pkg/flora.js";
+import { initSync, wasm_main } from "./pkg/figc.js";
 
-const PRELUDE = `external console { fn log(n: i32); fn log_str(s: string); }`;
+const STD_FUNCTIONS = `fn cmp_string(lhs: string, rhs: string): bool {
+    let i: i32 = 0;
+
+    loop {
+        if (lhs[i] == 0) { break; }
+        if (rhs[i] == 0) { break; }
+
+        if (lhs[i] != rhs[i]) {
+            return false;
+        }
+
+        i = i + 1;
+    }
+
+    return true;
+}
+`;
+
+const PRELUDE = `external console { fn log(n: i32); fn log_str(s: string); }
+builtin fn malloc(size: i32): i32;
+builtin fn free(size: i32): i32;
+`;
 
 const MAIN_EXAMPLE = `export fn main() {
     let x: string = "Hello World";
@@ -81,6 +101,8 @@ function clear_memory_view() {
     DOM.info.memory_view.innerHTML = "";
 }
 
+// We can pass this as arg to a function but
+// meeeh its just works
 let prev_mem;
 
 /**
@@ -109,6 +131,9 @@ function string_from_chars(chars) {
 
 (async () => {
     const reader = new Reader();
+    const exports = {
+        fetch_export: null,
+    };
     const imports = {
         console: {
             log_str: (ptr) => log_str(reader.get_mem(), ptr),
@@ -135,33 +160,41 @@ function string_from_chars(chars) {
 
                 const ptr = exports.malloc_wrapper(encodedString.length + 1);
 
-                return ptr;
+                exports.fetch_export(ptr);
             }
         }
     };
 
     DOM.editor.value = MAIN_EXAMPLE;
 
-    const wasm = await fetch_source("./pkg/flora_bg.wasm");
+    const wasm = await fetch_source("./pkg/figc_bg.wasm");
     const buf = await wasm.arrayBuffer();
     const mod = wasmInstance(buf);
 
     initSync(mod);
 
+    const memory_offset = 0;
+
     DOM.compile_btn.addEventListener("click", async () => {
         DOM.console.innerHTML = "";
         try {
-            const result = wasm_main(PRELUDE + DOM.editor.value);
+            const source = PRELUDE + STD_FUNCTIONS + DOM.editor.value;
+            const result = wasm_main(source, memory_offset);
             const program = wasmInstance(result);
 
             const wasm = await WebAssembly.instantiate(program, imports);
+            //
+            exports.fetch_export = wasm.exports.callback;
+            console.log(wasm.exports);
+
             reader.set_mem(new DataView(wasm.exports.memory.buffer));
 
             wasm.exports.main();
 
             update_memory_view(new DataView(wasm.exports.memory.buffer))
         } catch (error) {
-            console.log(error);
+            push_to_console(error);
+            console.log(error)
         }
     });
 })()

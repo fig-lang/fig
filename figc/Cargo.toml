@@ -1,8 +1,8 @@
 [package]
-name = "flora"
+name = "figc"
 version = "0.1.0"
 edition = "2021"
-description = "flora compiler"
+description = "fig compiler"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
