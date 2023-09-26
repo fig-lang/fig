@@ -587,14 +587,22 @@ pub struct Context {
     /// Manages Codes
     pub(crate) code_ctx: CodeContext,
 
+    /// Local variables context
     pub(crate) local_ctx: LocalContext,
 
+    /// Memory (heap) Context
     pub(crate) memory_ctx: MemoryContext,
 
+    /// Starting point of the memory
+    pub(crate) memory_offset: i32,
+
+    /// Exported functions or memory context
     pub(crate) export_ctx: ExportContext,
 
+    /// TODO: <write>
     pub(crate) import_ctx: ImportContext,
 
+    /// Global variables context
     pub(crate) global_ctx: GlobalContext,
 }
 
@@ -620,6 +628,7 @@ impl Context {
             global_ctx: GlobalContext::new(),
             //builtin_context: BuiltinContext::new(),
             memory_ctx: MemoryContext::new(mem, memory_offset),
+            memory_offset,
         }
     }
 
@@ -636,7 +645,7 @@ impl Context {
     pub fn bootstrap(&mut self) {
         self.global_ctx
             // the value 0 is deferent in some runtimes
-            .add_global_int("mem_offset", ConstExpr::i32_const(0), true);
+            .add_global_int("mem_offset", ConstExpr::i32_const(self.memory_offset), true);
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
