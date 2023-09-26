@@ -1,42 +1,71 @@
-use florac::lexer::lexer::Lexer;
-use florac::parser::ast::Program;
-use florac::parser::parser::{Parse, Parser};
-use std::env::args;
 use std::fs::File;
-use std::io;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use clap::{Parser, Subcommand, Args};
+use figc::{lexer::lexer::Lexer, };
+use figc::codegen::codegen::Context;
+use figc::parser::ast::Program;
+use figc::parser::{parser::Parse, parser::Parser as FigParser};
 
-use crate::codegen::codegen::Context;
-
-fn read_source_file(file_path: PathBuf) -> io::Result<String> {
-    let mut file = File::open(file_path)?;
-    let mut buf = String::new();
-    file.read_to_string(&mut buf)?;
-
-    Ok(buf)
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-fn main() {
-    let mut args = args().into_iter();
-    args.next();
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Compiles Fig file to an Wasm module
+    Compile(CompileArgs),
+}
 
-    let source_file_path = args.next();
+#[derive(Args, Debug)]
+struct CompileArgs {
+    /// Fig file path
+    fig_file_path: PathBuf,
+}
 
-    let source = read_source_file(PathBuf::from(source_file_path.unwrap())).unwrap();
-
+/// Expects SourceCode returns Wasm binary
+fn fig_compile_to_wasm(source: String, memory_offset: i32) -> Vec<u8> {
     let mut lexer = Lexer::new(source);
-    let mut parser = Parser::new(&mut lexer);
+    let mut parser = FigParser::new(&mut lexer);
     let program = Program::parse(&mut parser, None).unwrap();
 
-    let mut ctx = Context::new(program);
+    let mut ctx = Context::new(program, memory_offset);
     ctx.bootstrap();
     ctx.visit().unwrap();
 
     let buf = ctx.generate();
 
-    let output_path = args.next();
+    buf
+}
 
-    let mut file = File::create(PathBuf::from(output_path.unwrap())).unwrap();
-    file.write(&buf).unwrap();
+fn main () {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Compile(c_args) => {
+            // Open file
+            let mut buffer = String::new();
+            {
+                let mut file = File::open(&c_args.fig_file_path).unwrap();
+                file.read_to_string(&mut buffer).unwrap();
+                file.flush().unwrap();
+            }
+
+            // Now compile
+            let final_wasm = fig_compile_to_wasm(buffer, 0x0);
+
+            // Create A Compiled wasm file
+            let wasm_file_path =
+                PathBuf::from(
+                    format!("./{}.wasm", c_args.fig_file_path.file_stem().unwrap().to_str().unwrap())
+                );
+
+            let mut wasm_file = File::create(wasm_file_path).unwrap();
+            wasm_file.write_all(&*final_wasm).unwrap();
+            wasm_file.flush().unwrap();
+        }
+    }
 }
