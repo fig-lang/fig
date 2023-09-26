@@ -1,0 +1,31 @@
+external wasi_unstable {
+    fn fd_write(fd: i32, iovs: i32, iovslength: i32, nwritten: i32): i32;
+}
+
+builtin fn malloc(size: i32): i32;
+
+fn len(str_ptr: i32): i32 {
+    let length: i32 = 0;
+
+    loop {
+        if (str_ptr[length] == 0) { break; };
+
+        length = length + 1;
+    }
+
+    return length;
+}
+
+fn print(str: string) {
+    let iovArray: i32 = malloc(5);
+    iovArray[0] = str;
+    iovArray[4] = len(str);
+
+    return fd_write(1, iovArray, 1, 20);
+}
+
+export fn _start (): i32 {
+    let x = print("Hello World");
+
+    return 1;
+}
