@@ -25,7 +25,7 @@ fn print(str: string) {
 }
 
 export fn _start (): i32 {
-    let x = print("Hello World");
+    print("1");
 
     return 1;
 }
