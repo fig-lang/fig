@@ -16,16 +16,18 @@ fn len(str_ptr: i32): i32 {
     return length;
 }
 
-fn print(str: string) {
+fn print(str: string): i32 {
     let iovArray: i32 = malloc(5);
     iovArray[0] = str;
     iovArray[4] = len(str);
 
-    return fd_write(1, iovArray, 1, 20);
+    let result: i32 = malloc(1);
+
+    return fd_write(1, iovArray, 1, result);
 }
 
 export fn _start (): i32 {
-    print("1");
+    print("Hello World");
 
     return 1;
 }
