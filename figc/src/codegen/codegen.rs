@@ -76,6 +76,9 @@ impl<'a> Instructions<'a> for CallExpr {
             ))),
         }?;
 
+        ctx.function_ctx.use_function(&self.function.value);
+        ctx.code_ctx.use_function_code(&self.function.value);
+
         result.push(Instruction::Call(func_id));
 
         Ok(result)
@@ -218,7 +221,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
                     .new_function(type_index, "malloc".to_string(), vec![]);
 
                 ctx.code_ctx.add_local(ValType::I32);
-                ctx.code_ctx.new_function_code(malloc());
+                ctx.code_ctx.new_function_code(malloc(), "malloc".into());
             }
 
             "free" => {
@@ -227,7 +230,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
                 ctx.function_ctx
                     .new_function(type_index, "free".to_string(), vec![]);
 
-                ctx.code_ctx.new_function_code(free());
+                ctx.code_ctx.new_function_code(free(), "free".into());
             }
 
             _ => todo!(),
@@ -363,6 +366,9 @@ impl<'a> Instructions<'a> for ExportStatement {
         let Some(current_function) = ctx.function_ctx.current_function() else {
             return Err(CompilerError::NotDefined("Function not defined!".to_string()));
         };
+
+        ctx.function_ctx.use_function(&current_function.name);
+        ctx.code_ctx.use_function_code(&current_function.name);
 
         ctx.export_ctx
             .export_function(&current_function.name, current_function.id);
@@ -528,7 +534,7 @@ impl<'a> Instructions<'a> for Statement {
                     .new_function(type_index, func.meta.name.value.clone(), params);
 
                 let block = func.generate_instructions(ctx)?;
-                ctx.code_ctx.new_function_code(block);
+                ctx.code_ctx.new_function_code(block, func.clone().meta.name.value);
 
                 ctx.local_ctx.reset();
 
@@ -675,6 +681,7 @@ impl Context {
     }
 }
 
+// TODO: create use function_type method
 pub struct TypeContext {
     section: TypeSection,
     types_index: u32,
@@ -712,6 +719,7 @@ pub struct FunctionData {
     name: String,
     params: Vec<FunctionParam>,
     id: u32,
+    type_index: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -742,6 +750,12 @@ impl FunctionContext {
         self.current_function.clone()
     }
 
+    pub fn use_function(&mut self, function_name: &String) {
+        // TODO: remove unwrap (handle error)
+        let function = self.functions.get(function_name).unwrap();
+        self.section.function(function.type_index.unwrap());
+    }
+
     pub fn get_function(&self, function_name: &String) -> Option<&FunctionData> {
         self.functions.get(function_name)
     }
@@ -751,6 +765,7 @@ impl FunctionContext {
             name: name.clone(),
             params,
             id: self.functions_index,
+            type_index: None,
         };
 
         self.functions.insert(name, new_fn.clone());
@@ -762,11 +777,10 @@ impl FunctionContext {
             name: name.clone(),
             params,
             id: self.functions_index,
+            type_index: Some(type_index),
         };
 
         self.functions.insert(name, new_fn.clone());
-
-        self.section.function(type_index);
 
         self.current_function = Some(new_fn);
 
@@ -781,6 +795,7 @@ impl FunctionContext {
 pub struct CodeContext {
     section: CodeSection,
     current_locals: Vec<ValType>,
+    functions: HashMap<String, Function>
 }
 
 impl CodeContext {
@@ -788,10 +803,16 @@ impl CodeContext {
         Self {
             section: CodeSection::new(),
             current_locals: vec![],
+            functions: HashMap::new(),
         }
     }
 
-    pub fn new_function_code(&mut self, instructions: Vec<Instruction>) {
+    pub fn use_function_code(&mut self, function_name: &String) {
+        let func = self.functions.get(function_name).unwrap();
+        self.section.function(func);
+    }
+
+    pub fn new_function_code(&mut self, instructions: Vec<Instruction>, function_name: String) {
         let mut func = Function::new_with_locals_types(self.current_locals.clone());
 
         // idk is this ok?
@@ -801,7 +822,9 @@ impl CodeContext {
             func.instruction(instruction);
         }
 
-        self.section.function(&func);
+        self.functions.insert(function_name, func);
+
+        //self.section.function(&func);
     }
 
     pub fn add_local(&mut self, local: ValType) {
@@ -816,9 +839,9 @@ pub struct LocalContext {
     /// name, id
     ///
     /// for example when new let were created
-    /// new entry in this hasmap with (let name, index)
+    /// new entry in this hashmap with (let name, index)
     ///
-    /// wich first let index is 0 second is 1 and so on
+    /// witch first let index is 0 second is 1 and so on
     locals: HashMap<String, u32>,
 
     locals_type: HashMap<String, Type>,
