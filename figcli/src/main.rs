@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process::exit;
 use clap::{Parser, Subcommand, Args};
 use figc::{lexer::lexer::Lexer, };
 use figc::codegen::codegen::Context;
@@ -30,11 +31,21 @@ struct CompileArgs {
 fn fig_compile_to_wasm(source: String, memory_offset: i32) -> Vec<u8> {
     let mut lexer = Lexer::new(source);
     let mut parser = FigParser::new(&mut lexer);
-    let program = Program::parse(&mut parser, None).unwrap();
+    let program = Program::parse(&mut parser, None);
+
+
+        for error in program.get_errors(){
+            println!("{}", error);
+        }
 
     let mut ctx = Context::new(program, memory_offset);
     ctx.bootstrap();
     ctx.visit().unwrap();
+
+    for error in ctx.get_errors() {
+        println!("{}", error);
+        exit(1);
+    }
 
     let buf = ctx.generate();
 
