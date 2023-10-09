@@ -1,5 +1,6 @@
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::mem;
+use std::u32::MAX;
 
 use crate::lexer::{lexer::Lexer, token::Token};
 
@@ -8,7 +9,7 @@ use crate::lexer::{lexer::Lexer, token::Token};
 pub enum Precedence {
     Lowest,
     Equals,
-    Lessgreater,
+    LessGreater,
     Sum,
     Product,
     Prefix,
@@ -20,8 +21,8 @@ impl Precedence {
         match token {
             Token::Equal => Some(Self::Equals),
             Token::NotEqual => Some(Self::Equals),
-            Token::LessThan => Some(Self::Lessgreater),
-            Token::GreaterThan => Some(Self::Lessgreater),
+            Token::LessThan => Some(Self::LessGreater),
+            Token::GreaterThan => Some(Self::LessGreater),
             Token::Plus => Some(Self::Sum),
             Token::Minus => Some(Self::Sum),
             Token::ForwardSlash => Some(Self::Product),
@@ -48,22 +49,31 @@ pub struct Parser<'a> {
     // TODO: errors: Vec<ParserError>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParserError {
     Unexpected(String),
     Expected(String),
 }
 
+impl Display for ParserError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParserError::Unexpected(msg) => write!(f, "{}", msg),
+            ParserError::Expected(msg) => write!(f, "{}", msg)
+        }
+    }
+}
+
 impl ParserError {
-    pub fn unexpected(what: String) -> Self {
-        Self::Unexpected(format!("Unexpected token: {}", what))
+    pub fn unexpected(what: String, line: u32) -> Self {
+        Self::Unexpected(format!("Unexpected token: {} at line {}", what, line))
     }
 
-    pub fn expected<T>(expected: T, found: T) -> Self
+    pub fn expected<T>(expected: T, found: T, line: u32) -> Self
     where
         T: Display,
     {
-        Self::Expected(format!("expected {} found {}", expected, found))
+        Self::Expected(format!("expected {} found {} at line {}", expected, found, line))
     }
 }
 
@@ -107,11 +117,16 @@ impl<'a> Parser<'a> {
             return Err(ParserError::expected(
                 expected.to_string(),
                 self.next_token.to_string(),
+                self.lexer.line_no,
             ));
         }
 
         self.next_token();
 
         Ok(())
+    }
+
+    pub fn current_line(&self) -> u32 {
+        self.lexer.line_no
     }
 }

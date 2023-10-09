@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+};
 
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataSection, ElementSection, EntityType, ExportKind,
@@ -22,6 +25,23 @@ use super::builtins::{free, malloc};
 #[derive(Debug)]
 pub enum CompilerError {
     NotDefined(String),
+}
+
+impl CompilerError {
+    pub fn not_defined<'a>(what: &'a str, name: &'a str, at_line: u32) -> Self {
+        return Self::NotDefined(format!(
+            "{} with name {} not defined at line {}",
+            what, name, at_line
+        ));
+    }
+}
+
+impl Display for CompilerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompilerError::NotDefined(msg) => write!(f, "{}", msg),
+        }
+    }
 }
 
 type CResult<T> = Result<T, CompilerError>;
@@ -76,9 +96,6 @@ impl<'a> Instructions<'a> for CallExpr {
             ))),
         }?;
 
-        ctx.function_ctx.use_function(&self.function.value);
-        ctx.code_ctx.use_function_code(&self.function.value);
-
         result.push(Instruction::Call(func_id));
 
         Ok(result)
@@ -112,9 +129,10 @@ impl<'a> Instructions<'a> for RefValue {
         match self.value.as_ref() {
             Expression::Identifier(ident) => {
                 let Some(id) = ctx.local_ctx.get_local_index(&ident.value) else {
-                    return Err(
-                        CompilerError::NotDefined(format!("Variable with name {} is not defined!", &ident.value))
-                    );
+                    return Err(CompilerError::NotDefined(format!(
+                        "Variable with name {} is not defined!",
+                        &ident.value
+                    )));
                 };
 
                 return Ok(vec![Instruction::I32Const(*id as i32)]);
@@ -303,9 +321,10 @@ impl IndexExpr {
         // First we want to get the offset,
         // we add the current offset with the self.index
         let Some(variable) = ctx.local_ctx.get_local_index(&self.variable.value) else {
-            return Err(CompilerError::NotDefined(
-                format!("Variable with name {} is not defined!", self.variable.value)
-            ));
+            return Err(CompilerError::NotDefined(format!(
+                "Variable with name {} is not defined!",
+                self.variable.value
+            )));
         };
 
         // Is this good solution ?
@@ -341,11 +360,10 @@ impl<'a> Instructions<'a> for SetStatement {
 
             Expression::Identifier(ident) => {
                 let Some(var_id) = ctx.local_ctx.get_local_index(&ident.value) else {
-                    return Err(
-                        CompilerError::NotDefined(
-                            format!("Variable with name {} is not defined!", ident.value)
-                        )
-                    );
+                    return Err(CompilerError::NotDefined(format!(
+                        "Variable with name {} is not defined!",
+                        ident.value
+                    )));
                 };
 
                 result.extend(expression);
@@ -364,11 +382,10 @@ impl<'a> Instructions<'a> for ExportStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let function_instructions = self.value.generate_instructions(ctx)?;
         let Some(current_function) = ctx.function_ctx.current_function() else {
-            return Err(CompilerError::NotDefined("Function not defined!".to_string()));
+            return Err(CompilerError::NotDefined(
+                "Function not defined!".to_string(),
+            ));
         };
-
-        ctx.function_ctx.use_function(&current_function.name);
-        ctx.code_ctx.use_function_code(&current_function.name);
 
         ctx.export_ctx
             .export_function(&current_function.name, current_function.id);
@@ -412,9 +429,10 @@ impl<'a> Instructions<'a> for Expression {
 impl<'a> Instructions<'a> for Identifier {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let Some(id) = ctx.local_ctx.get_local_index(&self.value) else {
-            return Err(
-                CompilerError::NotDefined(format!("Variable with name {} is not defined!", self.value))
-            );
+            return Err(CompilerError::NotDefined(format!(
+                "Variable with name {} is not defined!",
+                self.value
+            )));
         };
 
         Ok(vec![Instruction::LocalGet(id.clone())])
@@ -534,7 +552,8 @@ impl<'a> Instructions<'a> for Statement {
                     .new_function(type_index, func.meta.name.value.clone(), params);
 
                 let block = func.generate_instructions(ctx)?;
-                ctx.code_ctx.new_function_code(block, func.clone().meta.name.value);
+                ctx.code_ctx
+                    .new_function_code(block, func.clone().meta.name.value);
 
                 ctx.local_ctx.reset();
 
@@ -568,8 +587,16 @@ impl<'a> Instructions<'a> for Statement {
 impl<'a> Instructions<'a> for Program {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
+
         for statement in &self.statements {
-            result.extend(statement.generate_instructions(ctx)?);
+            match statement.generate_instructions(ctx) {
+                Ok(instructions) => {
+                    result.extend(instructions);
+                }
+                Err(error) => {
+                    ctx.errors.push(error);
+                }
+            };
         }
 
         Ok(result)
@@ -583,6 +610,9 @@ pub struct Context {
 
     /// Final source
     module: Module,
+
+    /// Collected Errors when compiling
+    pub(crate) errors: Vec<CompilerError>,
 
     /// Manages types like function types
     pub(crate) type_ctx: TypeContext,
@@ -624,6 +654,7 @@ impl Context {
 
         Self {
             ast: program,
+            errors: vec![],
             type_ctx: TypeContext::new(),
             module: Module::new(),
             code_ctx: CodeContext::new(),
@@ -652,6 +683,11 @@ impl Context {
         self.global_ctx
             // the value 0 is deferent in some runtimes
             .add_global_int("mem_offset", ConstExpr::i32_const(self.memory_offset), true);
+    }
+
+    /// Returns the errors
+    pub fn get_errors(&self) -> &Vec<CompilerError> {
+        &self.errors
     }
 
     pub fn generate(&mut self) -> Vec<u8> {
@@ -719,7 +755,6 @@ pub struct FunctionData {
     name: String,
     params: Vec<FunctionParam>,
     id: u32,
-    type_index: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -750,12 +785,6 @@ impl FunctionContext {
         self.current_function.clone()
     }
 
-    pub fn use_function(&mut self, function_name: &String) {
-        // TODO: remove unwrap (handle error)
-        let function = self.functions.get(function_name).unwrap();
-        self.section.function(function.type_index.unwrap());
-    }
-
     pub fn get_function(&self, function_name: &String) -> Option<&FunctionData> {
         self.functions.get(function_name)
     }
@@ -765,11 +794,12 @@ impl FunctionContext {
             name: name.clone(),
             params,
             id: self.functions_index,
-            type_index: None,
         };
 
         self.functions.insert(name, new_fn.clone());
         self.functions_index += 1;
+
+        //self.section.function(index);
     }
 
     pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
@@ -777,7 +807,6 @@ impl FunctionContext {
             name: name.clone(),
             params,
             id: self.functions_index,
-            type_index: Some(type_index),
         };
 
         self.functions.insert(name, new_fn.clone());
@@ -785,6 +814,8 @@ impl FunctionContext {
         self.current_function = Some(new_fn);
 
         self.functions_index += 1;
+
+        self.section.function(type_index);
     }
 
     pub fn get_section(&self) -> FunctionSection {
@@ -795,7 +826,6 @@ impl FunctionContext {
 pub struct CodeContext {
     section: CodeSection,
     current_locals: Vec<ValType>,
-    functions: HashMap<String, Function>
 }
 
 impl CodeContext {
@@ -803,13 +833,7 @@ impl CodeContext {
         Self {
             section: CodeSection::new(),
             current_locals: vec![],
-            functions: HashMap::new(),
         }
-    }
-
-    pub fn use_function_code(&mut self, function_name: &String) {
-        let func = self.functions.get(function_name).unwrap();
-        self.section.function(func);
     }
 
     pub fn new_function_code(&mut self, instructions: Vec<Instruction>, function_name: String) {
@@ -822,9 +846,7 @@ impl CodeContext {
             func.instruction(instruction);
         }
 
-        self.functions.insert(function_name, func);
-
-        //self.section.function(&func);
+        self.section.function(&func);
     }
 
     pub fn add_local(&mut self, local: ValType) {

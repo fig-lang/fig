@@ -5,6 +5,7 @@ pub struct Lexer {
     position: usize,
     read_position: usize,
     ch: u8,
+    pub line_no: u32,
     input: Vec<u8>,
 }
 
@@ -14,6 +15,7 @@ impl Lexer {
             position: 0,
             read_position: 0,
             ch: 0,
+            line_no: 0,
             input: input.into_bytes(),
         };
         lex.read_char();
@@ -22,6 +24,10 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> Result<Token, String> {
+        if self.ch == b'\n' {
+            self.line_no += 1;
+        }
+
         self.skip_whitespace();
 
         let tok = match self.ch {
@@ -291,5 +297,7 @@ mod test {
             let next_token = lex.next_token().unwrap();
             assert_eq!(token, next_token);
         }
+
+        println!("LN: {}", lex.line_no);
     }
 }

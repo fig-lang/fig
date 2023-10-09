@@ -76,8 +76,8 @@ impl Display for Token {
             Colon => write!(f, ":"),
             Lparen => write!(f, "("),
             Rparen => write!(f, ")"),
-            LSquirly => write!(f, "l squirly"),
-            RSquirly => write!(f, "r squirly"),
+            LSquirly => write!(f, "{}", '{'),
+            RSquirly => write!(f, "{}" ,'}'),
             LBrack => write!(f, "["),
             RBrack => write!(f, "]"),
 

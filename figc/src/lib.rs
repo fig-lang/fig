@@ -14,7 +14,7 @@ use parser::parser::{Parse, Parser};
 pub fn wasm_main(src: &str, starting_offset: i32) -> Vec<u8> {
     let mut lexer = Lexer::new(src.to_string());
     let mut parser = Parser::new(&mut lexer);
-    let program = Program::parse(&mut parser, None).unwrap();
+    let program = Program::parse(&mut parser, None);
 
     let mut ctx = Context::new(program, starting_offset);
     ctx.bootstrap();

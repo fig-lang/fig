@@ -12,7 +12,7 @@ impl<'a> Parse<'a> for Type {
         let type_value = Type::from(type_ident.value.clone());
 
         if type_value == Type::NotDefined {
-            return Err(ParserError::unexpected(type_ident.value));
+            return Err(ParserError::unexpected(type_ident.value, parser.current_line()));
         }
 
         Ok(type_value)
@@ -220,6 +220,7 @@ impl<'a> Parse<'a> for SetStatement {
             return Err(ParserError::expected(
                 format!("variable name or index"),
                 format!("{:?}", variable),
+                parser.current_line(),
             ));
         }
 
@@ -329,36 +330,36 @@ pub enum Expression {
 
 impl<'a> Parse<'a> for Expression {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
-        let mut left_expr = match &parser.current_token {
-            Token::Int(_) => Expression::Integer(Integer::parse(parser, precedence.clone())?),
+        let mut left_expr: Expression = match &parser.current_token {
+            Token::Int(_) => Ok(Expression::Integer(Integer::parse(parser, precedence.clone())?)),
 
             //Token::LBrack => Expression::Index(IndexExpr::parse(parser, precedence.clone())?),
-            Token::Ref => Expression::Ref(RefValue::parse(parser, precedence.clone())?),
+            Token::Ref => Ok(Expression::Ref(RefValue::parse(parser, precedence.clone())?)),
             
             // BUG: Determine the *pointer with 1 * x
             // Or maybe we can use deref kind of keyword
-            Token::Asterisk => Expression::DeRef(DeRef::parse(parser, precedence.clone())?),
+            Token::Asterisk => Ok(Expression::DeRef(DeRef::parse(parser, precedence.clone())?)),
 
             Token::Ident(_) => {
                 if parser.next_token_is(Token::LBrack) {
-                    Expression::Index(IndexExpr::parse(parser, precedence.clone())?)
+                    Ok(Expression::Index(IndexExpr::parse(parser, precedence.clone())?))
                     //Expression::parse(parser, Some(Precedence::Lowest))?
                 } else {
-                    Expression::Identifier(Identifier::parse(parser, precedence.clone())?)
+                    Ok(Expression::Identifier(Identifier::parse(parser, precedence.clone())?))
                 }
             }
 
             Token::Minus | Token::Bang => {
-                Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?)
+                Ok(Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?))
             }
 
             Token::True | Token::False => {
-                Expression::Boolean(BooleanExpr::parse(parser, precedence.clone())?)
+                Ok(Expression::Boolean(BooleanExpr::parse(parser, precedence.clone())?))
             }
 
-            Token::If => Expression::If(IfExpr::parse(parser, precedence.clone())?),
+            Token::If => Ok(Expression::If(IfExpr::parse(parser, precedence.clone())?)),
 
-            Token::String(_) => Expression::String(StringExpr::parse(parser, None)?),
+            Token::String(_) => Ok(Expression::String(StringExpr::parse(parser, None)?)),
 
             // Parse grouped expressions
             Token::Lparen => {
@@ -367,7 +368,7 @@ impl<'a> Parse<'a> for Expression {
 
                 parser.expect_peek(Token::Rparen)?;
 
-                expression
+                Ok(expression)
             }
 
             Token::Plus
@@ -378,11 +379,11 @@ impl<'a> Parse<'a> for Expression {
             | Token::Mod
             | Token::LessThan
             | Token::GreaterThan => {
-                Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?)
+                Ok(Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?))
             }
 
-            tkn => panic!("{:?}", tkn),
-        };
+            tkn => Err(ParserError::unexpected(tkn.to_string(), parser.current_line())),
+        }?;
 
         let precedence = if let Some(p) = precedence {
             p
@@ -402,6 +403,7 @@ impl<'a> Parse<'a> for Expression {
                     _ => Err(ParserError::expected(
                         "function name".to_string(),
                         "Expression".to_string(),
+                        parser.current_line(),
                     )),
                 }?;
                 left_expr = Expression::Call(CallExpr::parse(parser, fn_name)?);
@@ -677,6 +679,8 @@ impl<'a> Parse<'a> for FunctionStatement {
 
         let body = BlockStatement::parse(parser, precedence)?;
 
+        // TODO: check for Rsquirly
+
         Ok(FunctionStatement { meta, body })
     }
 }
@@ -688,7 +692,7 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    fn parse<'a>(parser: &mut Parser<'a>, function: Identifier) -> PResult<Self> {
+    fn parse(parser: &mut Parser, function: Identifier) -> PResult<Self> {
         let args = Self::parse_args(parser)?;
 
         Ok(CallExpr {
@@ -697,7 +701,7 @@ impl CallExpr {
         })
     }
 
-    fn parse_args<'a>(parser: &mut Parser<'a>) -> PResult<Vec<Expression>> {
+    fn parse_args(parser: &mut Parser) -> PResult<Vec<Expression>> {
         let mut args: Vec<Expression> = vec![];
         if parser.next_token_is(Token::Rparen) {
             parser.next_token();
@@ -755,7 +759,7 @@ impl<'a> Parse<'a> for Integer {
                 value: int.parse::<i32>().unwrap(),
             }),
 
-            el => Err(ParserError::expected("Integer".to_owned(), el.to_string())),
+            el => Err(ParserError::expected("Integer".to_owned(), el.to_string(), parser.current_line())),
         }
     }
 }
@@ -775,6 +779,7 @@ impl<'a> Parse<'a> for Identifier {
             el => Err(ParserError::expected(
                 "Identifier".to_string(),
                 el.to_string(),
+                parser.current_line(),
             )),
         }
     }
@@ -783,19 +788,31 @@ impl<'a> Parse<'a> for Identifier {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Program {
     pub(crate) statements: Vec<Statement>,
+    pub(crate) errors: Vec<ParserError>,
 }
 
-impl<'a> Parse<'a> for Program {
-    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+impl Program {
+    pub fn parse(parser: &mut Parser, precedence: Option<Precedence>) -> Self {
         let mut statements: Vec<Statement> = vec![];
+        let mut errors: Vec<ParserError> = vec![];
 
         while !parser.current_token_is(Token::Eof) {
-            let statement = Statement::parse(parser, precedence.clone())?;
-            statements.push(statement);
+            match Statement::parse(parser, precedence.clone()) {
+                Ok(s) => {
+                    statements.push(s);
+                },
+                Err(err) => {
+                    errors.push(err);
+                }
+            };
             parser.next_token();
         }
 
-        Ok(Self { statements })
+        Self { statements, errors }
+    }
+
+    pub fn get_errors(&self) -> &Vec<ParserError> {
+        &self.errors
     }
 }
 
