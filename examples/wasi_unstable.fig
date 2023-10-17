@@ -4,6 +4,8 @@ external wasi_unstable {
 
 builtin fn malloc(size: i32): i32;
 
+const STDOUT: i32 = 1;
+
 fn len(str_ptr: i32): i32 {
     let length: i32 = 0;
 
@@ -23,7 +25,7 @@ fn print(str: string): i32 {
 
     let result: i32 = malloc(1);
 
-    return fd_write(1, iovArray, 1, result);
+    return fd_write(STDOUT, iovArray, 1, result);
 }
 
 export fn _start (): i32 {

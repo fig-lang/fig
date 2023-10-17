@@ -7,9 +7,6 @@ fn len(str: i32): i32 {
     let len: i32 = 0;
 
     loop {
-        log(str[len]);
-        log(len);
-
         if (str[len] == 0) {
             break;
         }
