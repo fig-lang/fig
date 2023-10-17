@@ -43,7 +43,7 @@ impl TryInto<ValType> for Type {
 
             // Its 0 or 1
             //
-            // TODO: Check if we can have a type with 1 byte ?
+            // TODO: Check if we can have a type with 1 bit ?
             Self::Bool => Ok(ValType::I32),
 
             // pointer of the string
