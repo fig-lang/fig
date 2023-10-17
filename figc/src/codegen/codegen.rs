@@ -12,10 +12,10 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, ExportStatement,
-        Expression, ExternalStatement, FunctionMeta, FunctionStatement, Identifier, IfExpr,
-        IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program, RefValue,
-        ReturnStatement, SetStatement, Statement, StringExpr,
+        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, ConstStatement,
+        ExportStatement, Expression, ExternalStatement, FunctionMeta, FunctionStatement,
+        Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program,
+        RefValue, ReturnStatement, SetStatement, Statement, StringExpr,
     },
     types::types::Type,
 };
@@ -25,6 +25,7 @@ use super::builtins::{free, malloc};
 #[derive(Debug)]
 pub enum CompilerError {
     NotDefined(String),
+    NotSupported(String),
 }
 
 impl CompilerError {
@@ -34,12 +35,20 @@ impl CompilerError {
             what, name, at_line
         ));
     }
+
+    pub fn not_supported_expr<'a>(expr: &'a str, statement: &'a str, at_line: u32) -> Self {
+        return Self::NotDefined(format!(
+            "Expression {} is not supported in {} statement at line {}",
+            expr, statement, at_line
+        ));
+    }
 }
 
 impl Display for CompilerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CompilerError::NotDefined(msg) => write!(f, "{}", msg),
+            CompilerError::NotSupported(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -380,17 +389,36 @@ impl<'a> Instructions<'a> for SetStatement {
 
 impl<'a> Instructions<'a> for ExportStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        let function_instructions = self.value.generate_instructions(ctx)?;
-        let Some(current_function) = ctx.function_ctx.current_function() else {
-            return Err(CompilerError::NotDefined(
-                "Function not defined!".to_string(),
-            ));
-        };
+        match *self.value {
+            Statement::Function(ref func) => {
+                let instructions = self.value.generate_instructions(ctx)?;
 
-        ctx.export_ctx
-            .export_function(&current_function.name, current_function.id);
+                let Some(current_function) = ctx.function_ctx.current_function() else {
+                    return Err(CompilerError::NotDefined(
+                        "Function not defined!".to_string(),
+                    ));
+                };
 
-        Ok(function_instructions)
+                ctx.export_ctx
+                    .export_function(&current_function.name, current_function.id);
+
+                Ok(instructions)
+            }
+
+            Statement::Const(ref cnst) => {
+                let instructions = self.value.generate_instructions(ctx)?;
+
+                let Some(glob) = ctx.global_ctx.get_global(&cnst.name.value) else {
+                    return Err(CompilerError::NotDefined("Const not defined!".to_string()));
+                };
+
+                ctx.export_ctx.export_global(&cnst.name.value, glob.0);
+
+                Ok(instructions)
+            }
+
+            _ => panic!("You can't export statements other than function and const"),
+        }
     }
 }
 
@@ -428,14 +456,19 @@ impl<'a> Instructions<'a> for Expression {
 
 impl<'a> Instructions<'a> for Identifier {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        let Some(id) = ctx.local_ctx.get_local_index(&self.value) else {
-            return Err(CompilerError::NotDefined(format!(
-                "Variable with name {} is not defined!",
-                self.value
-            )));
-        };
+        let local_id = ctx.local_ctx.get_local_index(&self.value);
 
-        Ok(vec![Instruction::LocalGet(id.clone())])
+        match local_id {
+            Some(id) => Ok(vec![Instruction::LocalGet(id.clone())]),
+
+            None => match ctx.global_ctx.get_global(&self.value) {
+                Some(glob) => Ok(vec![Instruction::GlobalGet(glob.0.clone())]),
+                None => Err(CompilerError::NotDefined(format!(
+                    "Variable with name {} is not defined!",
+                    self.value
+                ))),
+            },
+        }
     }
 }
 
@@ -460,6 +493,25 @@ impl<'a> Instructions<'a> for LetStatement {
         }
 
         Ok(result)
+    }
+}
+
+impl<'a> Instructions<'a> for ConstStatement {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let c_expr = match self.value.clone() {
+            Expression::Integer(i) => ConstExpr::i32_const(i.value),
+            Expression::Boolean(boolean) => ConstExpr::i32_const(if boolean.value { 1 } else { 0 }),
+
+            _ => panic!(
+                "{:?}",
+                CompilerError::not_supported_expr("expr", "const", 999)
+            ),
+        };
+
+        ctx.global_ctx
+            .add_global_int(&self.name.value, c_expr, false);
+
+        Ok(vec![])
     }
 }
 
@@ -578,6 +630,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Break(br) => br.generate_instructions(ctx),
             Statement::External(external) => external.generate_instructions(ctx),
             Statement::Builtin(builtin) => builtin.generate_instructions(ctx),
+            Statement::Const(cnst) => cnst.generate_instructions(ctx),
 
             _ => todo!(),
         }
@@ -836,7 +889,8 @@ impl CodeContext {
         }
     }
 
-    pub fn new_function_code(&mut self, instructions: Vec<Instruction>, function_name: String) {
+    // TODO: FIX
+    pub fn new_function_code(&mut self, instructions: Vec<Instruction>, _function_name: String) {
         let mut func = Function::new_with_locals_types(self.current_locals.clone());
 
         // idk is this ok?
@@ -907,6 +961,7 @@ impl LocalContext {
     /// When we create a new function
     pub fn reset(&mut self) {
         self.locals_index = 0;
+        self.locals.clear();
     }
 
     pub fn exit_active_local(&mut self) {
@@ -1010,6 +1065,10 @@ impl ExportContext {
         self.section.export(name, ExportKind::Func, id);
     }
 
+    pub fn export_global(&mut self, name: &String, id: u32) {
+        self.section.export(name, ExportKind::Global, id);
+    }
+
     pub fn get_section(&self) -> ExportSection {
         self.section.clone()
     }
@@ -1078,7 +1137,7 @@ impl GlobalContext {
 
     /// Start pop all the globals and apply them
     pub fn apply_globals(&mut self) {
-        while let Some((_key, val)) = self.globals.pop_first() {
+        while let Some((_key, val)) = self.globals.pop_last() {
             self.section.global(val.1, &val.2);
         }
     }
@@ -1088,8 +1147,8 @@ impl GlobalContext {
         *global = (global.0, global.1, value);
     }
 
-    pub fn get_global_id(&self, name: &String) -> u32 {
-        self.globals.get(name).unwrap().0
+    pub fn get_global(&self, name: &String) -> Option<&(u32, GlobalType, ConstExpr)> {
+        self.globals.get(name)
     }
 
     pub fn get_section(&self) -> GlobalSection {

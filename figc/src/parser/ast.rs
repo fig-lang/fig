@@ -12,7 +12,10 @@ impl<'a> Parse<'a> for Type {
         let type_value = Type::from(type_ident.value.clone());
 
         if type_value == Type::NotDefined {
-            return Err(ParserError::unexpected(type_ident.value, parser.current_line()));
+            return Err(ParserError::unexpected(
+                type_ident.value,
+                parser.current_line(),
+            ));
         }
 
         Ok(type_value)
@@ -21,6 +24,7 @@ impl<'a> Parse<'a> for Type {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
+    Const(ConstStatement),
     Let(LetStatement),
     Return(ReturnStatement),
     Expression(Expression),
@@ -52,6 +56,7 @@ impl Statement {
 impl<'a> Parse<'a> for Statement {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         match &parser.current_token {
+            Token::Const => Ok(Self::Const(ConstStatement::parse(parser, precedence)?)),
             Token::Let => Ok(Self::Let(LetStatement::parse(parser, precedence)?)),
             Token::Return => Ok(Self::Return(ReturnStatement::parse(parser, precedence)?)),
             Token::LSquirly => Ok(Self::Block(BlockStatement::parse(parser, precedence)?)),
@@ -106,6 +111,34 @@ pub struct LetStatement {
     pub(crate) value: Expression,
 }
 
+impl<'a> Parse<'a> for ConstStatement {
+    fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
+        // pass the `const` token
+        parser.next_token();
+
+        let ident = Identifier::parse(parser, precedence.clone())?;
+
+        parser.next_token();
+
+        let value_type = Type::parse(parser, precedence)?;
+
+        parser.expect_peek(Token::Assign)?;
+        parser.next_token();
+
+        let let_value = Expression::parse(parser, Some(Precedence::Lowest))?;
+
+        if parser.next_token_is(Token::Semicolon) {
+            parser.next_token();
+        }
+
+        Ok(ConstStatement {
+            value_type,
+            name: ident,
+            value: let_value,
+        })
+    }
+}
+
 impl<'a> Parse<'a> for LetStatement {
     // TODO: make the type optional
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
@@ -133,6 +166,13 @@ impl<'a> Parse<'a> for LetStatement {
             value: let_value,
         })
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstStatement {
+    pub(crate) value_type: Type,
+    pub(crate) name: Identifier,
+    pub(crate) value: Expression,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -164,12 +204,10 @@ impl<'a> Parse<'a> for ExportStatement {
         // Get the next value
         parser.next_token();
 
-        // We assume the next token is function
-        // We just support function export for now
-        let function = FunctionStatement::parse(parser, precedence)?;
+        let statement = Statement::parse(parser, precedence)?;
 
         Ok(ExportStatement {
-            value: Box::new(Statement::Function(function)),
+            value: Box::new(statement),
         })
     }
 }
@@ -331,31 +369,45 @@ pub enum Expression {
 impl<'a> Parse<'a> for Expression {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         let mut left_expr: Expression = match &parser.current_token {
-            Token::Int(_) => Ok(Expression::Integer(Integer::parse(parser, precedence.clone())?)),
+            Token::Int(_) => Ok(Expression::Integer(Integer::parse(
+                parser,
+                precedence.clone(),
+            )?)),
 
             //Token::LBrack => Expression::Index(IndexExpr::parse(parser, precedence.clone())?),
-            Token::Ref => Ok(Expression::Ref(RefValue::parse(parser, precedence.clone())?)),
-            
+            Token::Ref => Ok(Expression::Ref(RefValue::parse(
+                parser,
+                precedence.clone(),
+            )?)),
+
             // BUG: Determine the *pointer with 1 * x
             // Or maybe we can use deref kind of keyword
             Token::Asterisk => Ok(Expression::DeRef(DeRef::parse(parser, precedence.clone())?)),
 
             Token::Ident(_) => {
                 if parser.next_token_is(Token::LBrack) {
-                    Ok(Expression::Index(IndexExpr::parse(parser, precedence.clone())?))
+                    Ok(Expression::Index(IndexExpr::parse(
+                        parser,
+                        precedence.clone(),
+                    )?))
                     //Expression::parse(parser, Some(Precedence::Lowest))?
                 } else {
-                    Ok(Expression::Identifier(Identifier::parse(parser, precedence.clone())?))
+                    Ok(Expression::Identifier(Identifier::parse(
+                        parser,
+                        precedence.clone(),
+                    )?))
                 }
             }
 
-            Token::Minus | Token::Bang => {
-                Ok(Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?))
-            }
+            Token::Minus | Token::Bang => Ok(Expression::Prefix(PrefixExpr::parse(
+                parser,
+                precedence.clone(),
+            )?)),
 
-            Token::True | Token::False => {
-                Ok(Expression::Boolean(BooleanExpr::parse(parser, precedence.clone())?))
-            }
+            Token::True | Token::False => Ok(Expression::Boolean(BooleanExpr::parse(
+                parser,
+                precedence.clone(),
+            )?)),
 
             Token::If => Ok(Expression::If(IfExpr::parse(parser, precedence.clone())?)),
 
@@ -378,11 +430,15 @@ impl<'a> Parse<'a> for Expression {
             | Token::NotEqual
             | Token::Mod
             | Token::LessThan
-            | Token::GreaterThan => {
-                Ok(Expression::Prefix(PrefixExpr::parse(parser, precedence.clone())?))
-            }
+            | Token::GreaterThan => Ok(Expression::Prefix(PrefixExpr::parse(
+                parser,
+                precedence.clone(),
+            )?)),
 
-            tkn => Err(ParserError::unexpected(tkn.to_string(), parser.current_line())),
+            tkn => Err(ParserError::unexpected(
+                tkn.to_string(),
+                parser.current_line(),
+            )),
         }?;
 
         let precedence = if let Some(p) = precedence {
@@ -759,7 +815,11 @@ impl<'a> Parse<'a> for Integer {
                 value: int.parse::<i32>().unwrap(),
             }),
 
-            el => Err(ParserError::expected("Integer".to_owned(), el.to_string(), parser.current_line())),
+            el => Err(ParserError::expected(
+                "Integer".to_owned(),
+                el.to_string(),
+                parser.current_line(),
+            )),
         }
     }
 }
@@ -800,7 +860,7 @@ impl Program {
             match Statement::parse(parser, precedence.clone()) {
                 Ok(s) => {
                     statements.push(s);
-                },
+                }
                 Err(err) => {
                     errors.push(err);
                 }

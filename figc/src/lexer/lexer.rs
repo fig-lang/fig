@@ -83,6 +83,7 @@ impl Lexer {
                     return Ok(match ident.as_str() {
                         "fn" => Token::Function,
                         "let" => Token::Let,
+                        "const" => Token::Const,
                         "if" => Token::If,
                         "false" => Token::False,
                         "true" => Token::True,

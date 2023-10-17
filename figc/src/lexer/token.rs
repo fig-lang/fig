@@ -34,6 +34,7 @@ pub enum Token {
     External,
     Builtin,
     Let,
+    Const,
     Loop,
     Export,
     Break,
@@ -83,6 +84,7 @@ impl Display for Token {
 
             Function => write!(f, "fn"),
             Let => write!(f, "let"),
+            Const => write!(f, "const"),
 
             If => write!(f, "if"),
             Else => write!(f, "else"),
