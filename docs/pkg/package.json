@@ -1,0 +1,15 @@
+{
+  "name": "figc",
+  "description": "fig compiler",
+  "version": "0.1.0",
+  "files": [
+    "figc_bg.wasm",
+    "figc.js",
+    "figc.d.ts"
+  ],
+  "module": "figc.js",
+  "types": "figc.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
