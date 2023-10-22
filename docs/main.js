@@ -186,24 +186,6 @@ const FIG_MONACO_CONFIG = {
     },
 };
 
-const STD_FUNCTIONS = `fn cmp_string(lhs: string, rhs: string): bool {
-    let i: i32 = 0;
-
-    loop {
-        if (lhs[i] == 0) { break; }
-        if (rhs[i] == 0) { break; }
-
-        if (lhs[i] != rhs[i]) {
-            return false;
-        }
-
-        i = i + 1;
-    }
-
-    return true;
-}
-`;
-
 const PRELUDE = `external console { fn log(n: i32); fn log_str(s: string); }
 builtin fn malloc(size: i32): i32;
 builtin fn free(size: i32): i32;
@@ -351,7 +333,7 @@ function string_from_chars(chars) {
         DOM.compile_btn.addEventListener("click", async () => {
             DOM.console.innerHTML = "";
             try {
-                const source = PRELUDE + STD_FUNCTIONS + editor.getValue();
+                const source = PRELUDE + editor.getValue();
                 const result = wasm_main(source, memory_offset);
                 const mod = wabt.readWasm(result, { readDebugNames: true });
 
