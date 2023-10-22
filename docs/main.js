@@ -322,7 +322,7 @@ function string_from_chars(chars) {
 
     const memory_offset = 0;
 
-    require.config({ paths: { vs: './node_modules/monaco-editor/min/vs' } });
+    require.config({ paths: { vs: './monaco-editor/min/vs' } });
     require(['vs/editor/editor.main'], async function() {
         monaco.languages.register({ id: "fig" });
         monaco.languages.setMonarchTokensProvider('fig', FIG_MONACO_CONFIG);
@@ -358,24 +358,24 @@ function string_from_chars(chars) {
                 const result = wasm_main(source, memory_offset);
                 const mod = wabt.readWasm(result, { readDebugNames: true });
 
-        const wat = mod.toText({ foldExprs: false, inlineExport: false });
+                const wat = mod.toText({ foldExprs: false, inlineExport: false });
 
-        wat_editor.setValue(wat);
+                wat_editor.setValue(wat);
 
-        const program = wasmInstance(result);
+                const program = wasmInstance(result);
 
-        const wasm = await WebAssembly.instantiate(program, imports);
-        //
-        exports.fetch_export = wasm.exports.callback;
-        console.log(wasm.exports);
+                const wasm = await WebAssembly.instantiate(program, imports);
+                //
+                exports.fetch_export = wasm.exports.callback;
+                console.log(wasm.exports);
 
-        reader.set_mem(new DataView(wasm.exports.memory.buffer));
+                reader.set_mem(new DataView(wasm.exports.memory.buffer));
 
-        wasm.exports.main();
-    } catch (error) {
-        push_to_console(error);
-        console.log(error)
-    }
-});
+                wasm.exports.main();
+            } catch (error) {
+                push_to_console(error);
+                console.log(error)
+            }
+        });
     });
-}) ().catch(x => console.error(x))
+})().catch(x => console.error(x))
