@@ -68,10 +68,7 @@ const WAT_MONACO_CONFIG = {
         ],
 
         comment: [
-            [/[^\/*]+/, 'comment'],
-            [/\/\*/, 'comment', '@push'],    // nested comment
-            ["\\*/", 'comment', '@pop'],
-            [/[\/*]/, 'comment']
+            [/[^\;;]+/, 'comment'],
         ],
 
         string: [
@@ -341,7 +338,7 @@ function string_from_chars(chars) {
 
 
         let wat_editor = monaco.editor.create(document.getElementById('wat-editor'), {
-            value: "",
+            value: ";; Compilation result in WebAssembly Text (Wat)",
             language: 'wat',
             theme: "vs-dark",
             automaticLayout: true,
