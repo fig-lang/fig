@@ -518,6 +518,7 @@ impl<'a> Instructions<'a> for ConstStatement {
 impl<'a> Instructions<'a> for BlockStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
+
         for statement in &self.statements {
             result.extend(statement.generate_instructions(ctx)?);
         }

@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 use codegen::codegen::Context;
 use lexer::lexer::Lexer;
 use parser::ast::Program;
-use parser::parser::{Parse, Parser};
+use parser::parser::Parser;
 
 #[wasm_bindgen]
 pub fn wasm_main(src: &str, starting_offset: i32) -> Vec<u8> {
