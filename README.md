@@ -2,4 +2,4 @@
 Fig lang source code, containing the compiler, CLI, web, and examples
 
 # Stage
-FigLang is currently in the early stages of development. You can test the Early development version on this [website](https://figlang.github.io/fig/), and the website can compile the Fig file and produce WebAssembly Text Code to debug.
+FigLang is currently in the early stages of development. You can test the Early development version on this [website](https://figlang.github.io/fig/).
