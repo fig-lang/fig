@@ -1,0 +1,33 @@
+*{
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    padding: 10px;
+    color: #FFF;
+    height: 100%;
+    width: 100%;
+}
+
+.editor {
+    width: 50%;
+    height: 100%;
+}
+
+#console {
+    color: #FFF;
+    padding: 10px;
+}
+
+.editors {
+    display: flex;
+    gap: 10px;
+    flex-direction: row;
+    height: calc(100% - 20rem);
+    width: 100%;
+}
