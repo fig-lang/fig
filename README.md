@@ -1,5 +1,5 @@
 # fig
-Fig lang source code, containing the compiler, CLI, web and examples
+Fig lang source code, containing the compiler, CLI, web, and examples
 
 # Stage
-FigLang is currently is in the early stages of development
+FigLang is currently in the early stages of development. You can test the Early development version on this [website](https://figlang.github.io/fig/).
