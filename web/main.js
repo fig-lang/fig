@@ -1,5 +1,194 @@
 import { initSync, wasm_main } from "./pkg/figc.js";
 
+const WAT_MONACO_CONFIG = {
+    keywords: [
+        'get', 'set',
+        'mut', 'func',
+        'type', 'import',
+        'memory', 'export',
+        'data', 'global',
+    ],
+    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+
+    operators: [],
+
+    typeKeywords: [
+        'i32', 'i64', 'string', 'bool'
+    ],
+
+    // The main tokenizer for our languages
+    tokenizer: {
+        root: [
+            // identifiers and keywords
+            [/[a-z_$][\w$]*/, {
+                cases: {
+                    '@typeKeywords': 'keyword',
+                    '@keywords': 'keyword',
+                    '@default': 'identifier'
+                }
+            }],
+            [/[A-Z][\w\$]*/, 'type.identifier'],  // to show class names nicely
+
+            // whitespace
+            { include: '@whitespace' },
+
+            // delimiters and operators
+            [/[{}()\[\]]/, '@brackets'],
+            [/[<>](?!@symbols)/, '@brackets'],
+            [/@symbols/, {
+                cases: {
+                    '@operators': 'operator',
+                    '@default': ''
+                }
+            }],
+
+            // @ annotations.
+            // As an example, we emit a debugging log message on these tokens.
+            // Note: message are supressed during the first load -- change some lines to see them.
+            [/@\s*[a-zA-Z_\$][\w\$]*/, { token: 'annotation', log: 'annotation token: $0' }],
+
+            // numbers
+            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+            [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+            [/\d+/, 'number'],
+
+            // delimiter: after number because of .\d floats
+            [/[;,.]/, 'delimiter'],
+
+            // strings
+            [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-teminated string
+            [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+
+            // characters
+            [/'[^\\']'/, 'string'],
+            [/(')(@escapes)(')/, ['string', 'string.escape', 'string']],
+            [/'/, 'string.invalid']
+        ],
+
+        comment: [
+            [/[^\/*]+/, 'comment'],
+            [/\/\*/, 'comment', '@push'],    // nested comment
+            ["\\*/", 'comment', '@pop'],
+            [/[\/*]/, 'comment']
+        ],
+
+        string: [
+            [/[^\\"]+/, 'string'],
+            [/@escapes/, 'string.escape'],
+            [/\\./, 'string.escape.invalid'],
+            [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+        ],
+
+        whitespace: [
+            [/[ \t\r\n]+/, 'white'],
+            [/\/\*/, 'comment', '@comment'],
+            [/\/\/.*$/, 'comment'],
+        ],
+    }
+}
+
+const FIG_MONACO_CONFIG = {
+    // Set defaultToken to invalid to see what you do not tokenize yet
+    defaultToken: 'invalid',
+    tokenPostfix: '.fig',
+
+    keywords: [
+        'fn', 'break', 'return', 'let', 'else', 'external', 'builtin', 'export', 'if', 'loop', 'const'],
+
+    typeKeywords: [
+        'i32', 'i64', 'string', 'bool'
+    ],
+
+    parenFollows: [
+        'if', 'loop'
+    ],
+
+    operators: [
+        '=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=',
+        '&&', '||', '++', '--', '+', '-', '*', '/', '&', '|', '^', '%',
+        '<<', '>>', '>>>', '+=', '-=', '*=', '/=', '&=', '|=', '^=',
+        '%=', '<<=', '>>=', '>>>='
+    ],
+
+    // we include these common regular expressions
+    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+
+    // C# style strings
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+
+    // The main tokenizer for our languages
+    tokenizer: {
+        root: [
+            // identifiers and keywords
+            [/[a-z_$][\w$]*/, {
+                cases: {
+                    '@typeKeywords': 'keyword',
+                    '@keywords': 'keyword',
+                    '@default': 'identifier'
+                }
+            }],
+            [/[A-Z][\w\$]*/, 'type.identifier'],  // to show class names nicely
+
+            // whitespace
+            { include: '@whitespace' },
+
+            // delimiters and operators
+            [/[{}()\[\]]/, '@brackets'],
+            [/[<>](?!@symbols)/, '@brackets'],
+            [/@symbols/, {
+                cases: {
+                    '@operators': 'operator',
+                    '@default': ''
+                }
+            }],
+
+            // @ annotations.
+            // As an example, we emit a debugging log message on these tokens.
+            // Note: message are supressed during the first load -- change some lines to see them.
+            [/@\s*[a-zA-Z_\$][\w\$]*/, { token: 'annotation', log: 'annotation token: $0' }],
+
+            // numbers
+            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+            [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+            [/\d+/, 'number'],
+
+            // delimiter: after number because of .\d floats
+            [/[;,.]/, 'delimiter'],
+
+            // strings
+            [/"([^"\\]|\\.)*$/, 'string.invalid'],  // non-teminated string
+            [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+
+            // characters
+            [/'[^\\']'/, 'string'],
+            [/(')(@escapes)(')/, ['string', 'string.escape', 'string']],
+            [/'/, 'string.invalid']
+        ],
+
+        comment: [
+            [/[^\/*]+/, 'comment'],
+            [/\/\*/, 'comment', '@push'],    // nested comment
+            ["\\*/", 'comment', '@pop'],
+            [/[\/*]/, 'comment']
+        ],
+
+        string: [
+            [/[^\\"]+/, 'string'],
+            [/@escapes/, 'string.escape'],
+            [/\\./, 'string.escape.invalid'],
+            [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+        ],
+
+        whitespace: [
+            [/[ \t\r\n]+/, 'white'],
+            [/\/\*/, 'comment', '@comment'],
+            [/\/\/.*$/, 'comment'],
+        ],
+    },
+};
+
 const STD_FUNCTIONS = `fn cmp_string(lhs: string, rhs: string): bool {
     let i: i32 = 0;
 
@@ -70,11 +259,6 @@ class Reader {
 const DOM = {
     compile_btn: document.getElementById("compile-btn"),
     editor: document.getElementById("editor"),
-
-    info: {
-        memory_view: document.querySelector(".memory"),
-    },
-
     console: document.getElementById("console")
 };
 
@@ -86,43 +270,6 @@ function push_to_console(value) {
     item_element.innerHTML = value;
 
     DOM.console.append(item_element);
-}
-
-function push_to_memory_view(item, str = false, bgcolor = "#a0a0a0") {
-    const item_element = document.createElement("div");
-    item_element.className = "item";
-    item_element.style.background = bgcolor;
-    item_element.innerHTML = `${str ? String.fromCharCode(item) : item}`;
-
-    DOM.info.memory_view.append(item_element);
-}
-
-function clear_memory_view() {
-    DOM.info.memory_view.innerHTML = "";
-}
-
-// We can pass this as arg to a function but
-// meeeh its just works
-let prev_mem;
-
-/**
- * @param {DataView} array 
- */
-function update_memory_view(array) {
-    clear_memory_view();
-
-    let n = 0;
-    do {
-        if (prev_mem && prev_mem.getInt8(n) !== array.getInt8(n)) {
-            push_to_memory_view(array.getInt8(n), false, `rgb(231, 188, 107)`);
-        }
-        else {
-            push_to_memory_view(array.getInt8(n), false);
-        }
-        n += 1;
-    } while (array.getInt16(n) !== 0);
-
-    prev_mem = array;
 }
 
 function string_from_chars(chars) {
@@ -175,27 +322,60 @@ function string_from_chars(chars) {
 
     const memory_offset = 0;
 
-    DOM.compile_btn.addEventListener("click", async () => {
-        DOM.console.innerHTML = "";
-        try {
-            const source = PRELUDE + STD_FUNCTIONS + DOM.editor.value;
-            const result = wasm_main(source, memory_offset);
-            const program = wasmInstance(result);
+    require.config({ paths: { vs: './node_modules/monaco-editor/min/vs' } });
+    require(['vs/editor/editor.main'], async function() {
+        monaco.languages.register({ id: "fig" });
+        monaco.languages.setMonarchTokensProvider('fig', FIG_MONACO_CONFIG);
 
-            const wasm = await WebAssembly.instantiate(program, imports);
-            //
-            exports.fetch_export = wasm.exports.callback;
-            console.log(wasm.exports);
+        monaco.languages.register({ id: "wat" });
+        monaco.languages.setMonarchTokensProvider('wat', WAT_MONACO_CONFIG);
 
-            reader.set_mem(new DataView(wasm.exports.memory.buffer));
+        let editor = monaco.editor.create(document.getElementById('editor'), {
+            value: MAIN_EXAMPLE,
+            language: 'fig',
+            theme: "vs-dark",
+            fontSize: "20px",
+            automaticLayout: true,
+            autoClosingBrackets: "always",
+        });
 
-            wasm.exports.main();
 
-            update_memory_view(new DataView(wasm.exports.memory.buffer))
-        } catch (error) {
-            push_to_console(error);
-            console.log(error)
-        }
+        let wat_editor = monaco.editor.create(document.getElementById('wat-editor'), {
+            value: "",
+            language: 'wat',
+            theme: "vs-dark",
+            automaticLayout: true,
+            autoClosingBrackets: "always",
+        });
+
+        let wabt = new WabtModule();
+        wabt = await wabt;
+
+        DOM.compile_btn.addEventListener("click", async () => {
+            DOM.console.innerHTML = "";
+            try {
+                const source = PRELUDE + STD_FUNCTIONS + editor.getValue();
+                const result = wasm_main(source, memory_offset);
+                const mod = wabt.readWasm(result, { readDebugNames: true });
+
+        const wat = mod.toText({ foldExprs: false, inlineExport: false });
+
+        wat_editor.setValue(wat);
+
+        const program = wasmInstance(result);
+
+        const wasm = await WebAssembly.instantiate(program, imports);
+        //
+        exports.fetch_export = wasm.exports.callback;
+        console.log(wasm.exports);
+
+        reader.set_mem(new DataView(wasm.exports.memory.buffer));
+
+        wasm.exports.main();
+    } catch (error) {
+        push_to_console(error);
+        console.log(error)
+    }
+});
     });
-})()
-    .catch(x => console.error(x))
+}) ().catch(x => console.error(x))
