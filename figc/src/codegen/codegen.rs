@@ -111,8 +111,8 @@ impl<'a> Instructions<'a> for CallExpr {
     }
 }
 
-impl<'a> Instructions<'a> for StringExpr {
-    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+impl StringExpr {
+    pub fn allocate(&self, ctx: &mut Context) -> i32 {
         // the + 1 is for \0 at the end of the string
         let size = self.string.len() + 1;
 
@@ -128,6 +128,14 @@ impl<'a> Instructions<'a> for StringExpr {
         let ptr = ctx
             .memory_ctx
             .alloc(size as i32, string.as_bytes().to_vec());
+
+        return ptr;
+    }
+}
+
+impl<'a> Instructions<'a> for StringExpr {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let ptr = self.allocate(ctx);
 
         Ok(vec![Instruction::I32Const(ptr)])
     }
@@ -501,7 +509,9 @@ impl<'a> Instructions<'a> for ConstStatement {
         let c_expr = match self.value.clone() {
             Expression::Integer(i) => ConstExpr::i32_const(i.value),
             Expression::Boolean(boolean) => ConstExpr::i32_const(if boolean.value { 1 } else { 0 }),
+            Expression::String(str) => ConstExpr::i32_const(str.allocate(ctx)),
 
+            // TODO
             _ => panic!(
                 "{:?}",
                 CompilerError::not_supported_expr("expr", "const", 999)
