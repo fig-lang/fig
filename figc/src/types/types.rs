@@ -15,10 +15,21 @@ pub enum Type {
     Bool,
 
     NotDefined,
+
+    Array(Box<Type>),
 }
 
 impl From<String> for Type {
     fn from(value: String) -> Self {
+        let splited = value.split("[");
+
+        if splited.clone().into_iter().count() >= 2 {
+            // This means its an array
+            let ty = Type::from(splited.into_iter().nth(0).unwrap().to_string());
+
+            return Self::Array(Box::from(ty));
+        }
+
         match value.as_str() {
             "i32" => Self::I32,
             "i64" => Self::I64,
@@ -48,6 +59,8 @@ impl TryInto<ValType> for Type {
 
             // pointer of the string
             Self::String => Ok(ValType::I32),
+
+            Self::Array(_) => Ok(ValType::I32),
 
             _t => Err(CompilerError::NotDefined(
                 "type is not supported".to_string(),

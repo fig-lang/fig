@@ -9,13 +9,24 @@ impl<'a> Parse<'a> for Type {
 
         let type_ident = Identifier::parse(parser, precedence)?;
 
-        let type_value = Type::from(type_ident.value.clone());
+        let type_ident = if parser.next_token_is(Token::LBrack) {
+            // It's Array type
+            let mut new = String::from(type_ident.value);
+
+            new.push_str("[]");
+
+            parser.next_token();
+            parser.next_token();
+
+            new
+        } else {
+            type_ident.value
+        };
+
+        let type_value = Type::from(type_ident.clone());
 
         if type_value == Type::NotDefined {
-            return Err(ParserError::unexpected(
-                type_ident.value,
-                parser.current_line(),
-            ));
+            return Err(ParserError::unexpected(type_ident, parser.current_line()));
         }
 
         Ok(type_value)

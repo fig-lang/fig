@@ -344,6 +344,14 @@ impl IndexExpr {
             )));
         };
 
+        let variable_type = ctx.local_ctx.get_local_type(&self.variable.value).unwrap();
+        if !matches!(variable_type, Type::Array(_)) {
+            return Err(CompilerError::NotSupported(format!(
+                "Variable with name {} is not an array!",
+                self.variable.value,
+            )));
+        }
+
         // Is this good solution ?
         result.push(Instruction::LocalGet(variable.clone()));
         result.extend(self.index.generate_instructions(ctx)?);
