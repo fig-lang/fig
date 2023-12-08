@@ -395,13 +395,19 @@ impl<'a> Parse<'a> for Expression {
             // Or maybe we can use deref kind of keyword
             Token::Asterisk => Ok(Expression::DeRef(DeRef::parse(parser, precedence.clone())?)),
 
-            Token::Ident(_) => {
+            Token::Ident(ident) => {
                 if parser.next_token_is(Token::LBrack) {
                     Ok(Expression::Index(IndexExpr::parse(
                         parser,
                         precedence.clone(),
                     )?))
-                    //Expression::parse(parser, Some(Precedence::Lowest))?
+                } else if parser.next_token_is(Token::Lparen) {
+                    Ok(Expression::Call(CallExpr::parse(
+                        parser,
+                        Identifier {
+                            value: ident.clone(),
+                        },
+                    )?))
                 } else {
                     Ok(Expression::Identifier(Identifier::parse(
                         parser,
@@ -460,20 +466,6 @@ impl<'a> Parse<'a> for Expression {
 
         while let Some(p) = parser.next_precedence() {
             if precedence > p {
-                break;
-            }
-
-            if parser.next_token_is(Token::Lparen) {
-                parser.next_token();
-                let fn_name = match left_expr {
-                    Self::Identifier(ident) => Ok(ident),
-                    _ => Err(ParserError::expected(
-                        "function name".to_string(),
-                        "Expression".to_string(),
-                        parser.current_line(),
-                    )),
-                }?;
-                left_expr = Expression::Call(CallExpr::parse(parser, fn_name)?);
                 break;
             }
 
@@ -760,6 +752,7 @@ pub struct CallExpr {
 
 impl CallExpr {
     fn parse(parser: &mut Parser, function: Identifier) -> PResult<Self> {
+        parser.next_token();
         let args = Self::parse_args(parser)?;
 
         Ok(CallExpr {
