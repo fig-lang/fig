@@ -1120,8 +1120,11 @@ impl ImportContext {
 
 pub struct GlobalContext {
     section: GlobalSection,
-    /// <global_name, id>
-    globals: BTreeMap<String, (u32, GlobalType, ConstExpr)>,
+    /// <(id, global_name), id>
+    ///    ^
+    ///    |
+    /// we need this id to sort the Map correctly
+    globals: BTreeMap<(u32, String), (u32, GlobalType, ConstExpr)>,
     globals_id: u32,
 }
 
@@ -1138,7 +1141,7 @@ impl GlobalContext {
     pub fn add_global_int(&mut self, name: &str, init: ConstExpr, mutable: bool) -> u32 {
         let id = self.globals_id;
         self.globals.insert(
-            name.to_string(),
+            (id, name.to_string()),
             (
                 id,
                 GlobalType {
@@ -1156,18 +1159,18 @@ impl GlobalContext {
 
     /// Start pop all the globals and apply them
     pub fn apply_globals(&mut self) {
-        while let Some((_key, val)) = self.globals.pop_last() {
+        while let Some((_key, val)) = self.globals.pop_first() {
             self.section.global(val.1, &val.2);
         }
     }
 
     pub fn set_global(&mut self, name: &str, value: ConstExpr) {
-        let global = self.globals.get_mut(name).unwrap();
+        let global = self.globals.get_mut(&(self.globals_id, name.to_string())).unwrap();
         *global = (global.0, global.1, value);
     }
 
     pub fn get_global(&self, name: &String) -> Option<&(u32, GlobalType, ConstExpr)> {
-        self.globals.get(name)
+        self.globals.get(&(self.globals_id, name.clone()))
     }
 
     pub fn get_section(&self) -> GlobalSection {
