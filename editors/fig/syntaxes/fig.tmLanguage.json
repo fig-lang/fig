@@ -1,0 +1,32 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "fig",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.fig",
+				"match": "\\b(if|loop|return|fn|external|builtin|let|const|export)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.fig",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.fig",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.fig"
+}

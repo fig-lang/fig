@@ -1,0 +1,25 @@
+{
+  "name": "fig",
+  "displayName": "fig",
+  "description": "FigLang syntax",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "fig",
+      "aliases": ["fig", "fig"],
+      "extensions": [".fig"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "fig",
+      "scopeName": "source.fig",
+      "path": "./syntaxes/fig.tmLanguage.json"
+    }]
+  }
+}
