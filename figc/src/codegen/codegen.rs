@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::Display,
 };
 
@@ -1120,11 +1120,10 @@ impl ImportContext {
 
 pub struct GlobalContext {
     section: GlobalSection,
-    /// <(id, global_name), id>
-    ///    ^
-    ///    |
-    /// we need this id to sort the Map correctly
-    globals: BTreeMap<(u32, String), (u32, GlobalType, ConstExpr)>,
+
+    // We will search in this Vec, it's O(n)
+    // but i dont care 
+    globals: VecDeque<(String, u32, GlobalType, ConstExpr)>,
     globals_id: u32,
 }
 
@@ -1132,45 +1131,58 @@ impl GlobalContext {
     pub fn new() -> Self {
         Self {
             section: GlobalSection::new(),
-            globals: BTreeMap::new(),
+            globals: VecDeque::new(),
             globals_id: 0,
         }
     }
 
     /// Adds global integer
     pub fn add_global_int(&mut self, name: &str, init: ConstExpr, mutable: bool) -> u32 {
-        let id = self.globals_id;
-        self.globals.insert(
-            (id, name.to_string()),
-            (
-                id,
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable,
-                },
-                init,
-            ),
-        );
+        self.globals.push_back((
+            name.to_string(),
+            self.globals_id,
+            GlobalType {
+                val_type: ValType::I32,
+                mutable,
+            },
+            init,
+        ));
 
         self.globals_id += 1;
 
-        id
+        self.globals_id
     }
 
     /// Start pop all the globals and apply them
     pub fn apply_globals(&mut self) {
-        while let Some((_key, val)) = self.globals.pop_first() {
-            self.section.global(val.1, &val.2);
+        while let Some((_name, _id, ty, expr)) = self.globals.pop_front() {
+            self.section.global(ty, &expr);
         }
     }
 
+    // Ugly ass code
+    // TODO: return Error if glob is None
     pub fn set_global(&mut self, name: &str, value: ConstExpr) {
-        let global = self.globals.get_mut(&(self.globals_id, name.to_string())).unwrap();
-        *global = (global.0, global.1, value);
+        let glob = self
+            .globals
+            .iter_mut()
+            .position(|(n, _, _, _)| n == &name.to_string())
+            .unwrap();
+
+        self.globals[glob] = (
+            self.globals[glob].0.clone(),
+            self.globals[glob].1,
+            self.globals[glob].2,
+            value,
+        );
     }
 
-    pub fn get_global(&self, name: &String) -> Option<&(u32, GlobalType, ConstExpr)> {
-        self.globals.get(&(self.globals_id, name.clone()))
+    pub fn get_global(&self, name: &String) -> Option<(u32, &GlobalType, &ConstExpr)>{
+        let Some((_, id, ty, expr)) = self.globals.iter().find(|(n, _, _, _)| n == name) else {
+            return None;
+        };
+
+        Some((id.clone(), ty, expr))
     }
 
     pub fn get_section(&self) -> GlobalSection {
