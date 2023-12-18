@@ -6,7 +6,7 @@ builtin fn malloc(size: i32): i32;
 
 const STDOUT: i32 = 1;
 
-fn len(str_ptr: i32): i32 {
+fn len(str_ptr: i32[]): i32 {
     let length: i32 = 0;
 
     loop {
@@ -19,7 +19,7 @@ fn len(str_ptr: i32): i32 {
 }
 
 fn print(str: string): i32 {
-    let iovArray: i32 = malloc(5);
+    let iovArray: i32[] = malloc(5);
     iovArray[0] = str;
     iovArray[4] = len(str);
 
@@ -29,7 +29,9 @@ fn print(str: string): i32 {
 }
 
 export fn _start (): i32 {
-    print("Hello World");
+    print("Hello World ");
+    print("FUCK");
+    print(" 3");
 
-    return 1;
+    return 0;
 }
