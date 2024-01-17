@@ -19,5 +19,8 @@ export fn main() {
 }
 ```
 
-then run `./target/release/fig run ./example.fig`
+finally run `./target/release/fig run ./example.fig`
 
+*The output should be `Hello World`.*
+
+Also, you can test out fig files in `examples` folder.
