@@ -7,6 +7,10 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::exit;
+use wasmer::{
+    imports, Exports, Function, FunctionEnv, FunctionEnvMut, Imports, Instance, Memory, MemoryView,
+    Module, Store, WasmPtr,
+};
 use wasmprinter::print_bytes;
 
 #[derive(Parser, Debug)]
@@ -20,6 +24,14 @@ struct Cli {
 enum Commands {
     /// Compiles Fig file to an Wasm module
     Compile(CompileArgs),
+
+    Run(RunArgs),
+}
+
+#[derive(Args, Debug)]
+struct RunArgs {
+    /// Fig file path
+    fig_file_path: PathBuf,
 }
 
 #[derive(Args, Debug)]
@@ -56,6 +68,35 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> Vec<u8> {
     buf
 }
 
+struct Env {
+    memory: Option<Memory>,
+}
+
+fn fig_print(mut env: FunctionEnvMut<Env>, p: WasmPtr<u8>) {
+    let (env_data, store) = env.data_and_store_mut();
+    let memory_view = env_data.memory.clone().unwrap().view(&store);
+
+    println!("{}", p.read_utf8_string_with_nul(&memory_view).unwrap())
+}
+
+fn run_wasm(bytes: &Vec<u8>) {
+    let mut store = Store::default();
+    let module = Module::new(&store, bytes).unwrap();
+
+    let env = FunctionEnv::new(&mut store, Env { memory: None });
+    let import_object = imports! {
+        "fig" => {
+            "print" => Function::new_typed_with_env(&mut store, &env, fig_print),
+        }
+    };
+
+    let instance = Instance::new(&mut store, &module, &import_object).unwrap();
+    let memory = instance.exports.get_memory("memory").unwrap().clone();
+    env.as_mut(&mut store).memory = Some(memory);
+    let main_fn = instance.exports.get_function("main").unwrap();
+    let _result = main_fn.call(&mut store, &[]).unwrap();
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -88,6 +129,19 @@ fn main() {
             let mut wasm_file = File::create(wasm_file_path).unwrap();
             wasm_file.write_all(&*final_wasm).unwrap();
             wasm_file.flush().unwrap();
+        }
+        Commands::Run(r_args) => {
+            let mut buffer = String::new();
+            {
+                let mut file = File::open(&r_args.fig_file_path).unwrap();
+                file.read_to_string(&mut buffer).unwrap();
+                file.flush().unwrap();
+            }
+
+            // Now compile
+            let final_wasm = fig_compile_to_wasm(buffer, 0x0);
+
+            run_wasm(&final_wasm);
         }
     }
 }
