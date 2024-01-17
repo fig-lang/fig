@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 use std::mem;
-use std::u32::MAX;
 
 use crate::lexer::{lexer::Lexer, token::Token};
 

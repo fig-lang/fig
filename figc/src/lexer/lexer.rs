@@ -82,6 +82,7 @@ impl Lexer {
                     let ident = self.read_ident();
                     return Ok(match ident.as_str() {
                         "fn" => Token::Function,
+                        "struct" => Token::Struct,
                         "let" => Token::Let,
                         "const" => Token::Const,
                         "if" => Token::If,

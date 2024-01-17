@@ -41,6 +41,7 @@ pub enum Statement {
     Expression(Expression),
     Block(BlockStatement),
     Function(FunctionStatement),
+    Struct(StructStatement),
     Export(ExportStatement),
     Loop(LoopStatement),
     Set(SetStatement),
@@ -74,6 +75,7 @@ impl<'a> Parse<'a> for Statement {
             Token::Function => Ok(Self::Function(FunctionStatement::parse(
                 parser, precedence,
             )?)),
+            Token::Struct => Ok(Self::Struct(StructStatement::parse(parser, precedence)?)),
             Token::Export => Ok(Self::Export(ExportStatement::parse(parser, precedence)?)),
             Token::Loop => Ok(Self::Loop(LoopStatement::parse(parser, precedence)?)),
             Token::Break => Ok(Self::Break(BreakStatement::parse(parser, None)?)),
@@ -741,6 +743,72 @@ impl<'a> Parse<'a> for FunctionStatement {
         // TODO: check for Rsquirly
 
         Ok(FunctionStatement { meta, body })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructFields {
+    pub(crate) fields: Vec<(Identifier, Type)>,
+}
+
+impl<'a> Parse<'a> for StructFields {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        parser.next_token();
+
+        let mut fields: Vec<(Identifier, Type)> = vec![];
+
+        while !parser.current_token_is(Token::RSquirly) && !parser.current_token_is(Token::Eof) {
+            // The first part will be identifier like `length: i32`
+            // we will parse the length first
+            let ident = Identifier::parse(parser, None)?;
+
+            // Now we will parse the type section like `: i32`
+            //
+            // Skip the `:`
+            parser.expect_peek(Token::Colon)?;
+
+            let ty = Type::parse(parser, None)?;
+
+            fields.push((ident, ty));
+
+            parser.expect_peek(Token::Comma)?;
+            parser.next_token();
+        }
+
+        Ok(Self { fields })
+    }
+}
+
+// -- For example:
+//
+// struct vector {
+//      capacity: i32,
+//      length: i32,
+//      vec: i32[],
+// }
+//
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructStatement {
+    pub(crate) name: Identifier,
+    pub(crate) fields: StructFields,
+}
+
+impl<'a> Parse<'a> for StructStatement {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        // We will parse the sturct here
+        // First skip struct keyword
+        parser.next_token();
+
+        // Now parse the name of the struct
+        let name = Identifier::parse(parser, None)?;
+
+        // Now Skip the { char
+        parser.expect_peek(Token::LSquirly)?;
+
+        // Now we will parse the struct fields
+        let fields = StructFields::parse(parser, None)?;
+
+        Ok(Self { name, fields })
     }
 }
 

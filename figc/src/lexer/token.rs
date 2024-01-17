@@ -31,6 +31,7 @@ pub enum Token {
     RBrack,
 
     Function,
+    Struct,
     External,
     Builtin,
     Let,
@@ -83,6 +84,7 @@ impl Display for Token {
             RBrack => write!(f, "]"),
 
             Function => write!(f, "fn"),
+            Struct => write!(f, "struct"),
             Let => write!(f, "let"),
             Const => write!(f, "const"),
 

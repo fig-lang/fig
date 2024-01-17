@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt::Display,
 };
 
@@ -406,7 +406,7 @@ impl<'a> Instructions<'a> for SetStatement {
 impl<'a> Instructions<'a> for ExportStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         match *self.value {
-            Statement::Function(ref func) => {
+            Statement::Function(ref _f) => {
                 let instructions = self.value.generate_instructions(ctx)?;
 
                 let Some(current_function) = ctx.function_ctx.current_function() else {
@@ -1122,7 +1122,7 @@ pub struct GlobalContext {
     section: GlobalSection,
 
     // We will search in this Vec, it's O(n)
-    // but i dont care 
+    // but i dont care
     globals: VecDeque<(String, u32, GlobalType, ConstExpr)>,
     globals_id: u32,
 }
@@ -1177,7 +1177,7 @@ impl GlobalContext {
         );
     }
 
-    pub fn get_global(&self, name: &String) -> Option<(u32, &GlobalType, &ConstExpr)>{
+    pub fn get_global(&self, name: &String) -> Option<(u32, &GlobalType, &ConstExpr)> {
         let Some((_, id, ty, expr)) = self.globals.iter().find(|(n, _, _, _)| n == name) else {
             return None;
         };
