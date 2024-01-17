@@ -1,5 +1,23 @@
-# fig
-Fig lang source code, containing the compiler, CLI, web, and examples
+# Fig
+Fig-lang source code, containing the compiler, CLI, web, and examples
 
 # Stage
-FigLang is currently in the early stages of development. You can test the Early development version on [Playground](https://fig-lang.github.io/fig/).
+Fig-lang is currently in the early stages of development. You can test the Early development version on [Playground](https://fig-lang.github.io/fig/).
+
+# Try Fig-lang local
+First compile the FigCli with `cargo build --release`
+
+then create a file `example.fig`:
+
+```
+external fig {
+    fn print(str: string);
+}
+
+export fn main() {
+    print("Hello World");
+}
+```
+
+then run `./target/release/fig run ./example.fig`
+
