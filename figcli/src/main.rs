@@ -4,14 +4,17 @@ use figc::lexer::lexer::Lexer;
 use figc::parser::ast::Program;
 use figc::parser::parser::Parser as FigParser;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::exit;
 use wasmer::{
-    imports, Exports, Function, FunctionEnv, FunctionEnvMut, Imports, Instance, Memory, MemoryView,
-    Module, Store, WasmPtr,
+    imports, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, Module, Store, Value, WasmPtr,
 };
 use wasmprinter::print_bytes;
+
+use std::io;
+use std::io::prelude::*;
+use std::net::TcpListener;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -26,12 +29,23 @@ enum Commands {
     Compile(CompileArgs),
 
     Run(RunArgs),
+
+    Server(ServerArgs),
 }
 
 #[derive(Args, Debug)]
 struct RunArgs {
     /// Fig file path
     fig_file_path: PathBuf,
+}
+
+#[derive(Args, Debug)]
+struct ServerArgs {
+    /// Fig file path
+    fig_file_path: PathBuf,
+
+    #[arg(long, action)]
+    addr: String,
 }
 
 #[derive(Args, Debug)]
@@ -45,7 +59,7 @@ struct CompileArgs {
 }
 
 /// Expects SourceCode returns Wasm binary
-fn fig_compile_to_wasm(source: String, memory_offset: i32) -> Vec<u8> {
+fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
     let mut lexer = Lexer::new(source);
     let mut parser = FigParser::new(&mut lexer);
     let program = Program::parse(&mut parser, None);
@@ -65,7 +79,7 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> Vec<u8> {
 
     let buf = ctx.generate();
 
-    buf
+    (buf, ctx.memory_ctx.offset)
 }
 
 struct Env {
@@ -79,14 +93,39 @@ fn fig_print(mut env: FunctionEnvMut<Env>, p: WasmPtr<u8>) {
     println!("{}", p.read_utf8_string_with_nul(&memory_view).unwrap())
 }
 
+// fn(...) -> number of bytes actually read ( i32 ).
+fn fig_read(mut env: FunctionEnvMut<Env>, fd: i32, buf_ptr: WasmPtr<u8>, until: u8) -> i32 {
+    match fd {
+        1 => {
+            let mut buf: Vec<u8> = Vec::new();
+            {
+                let stdin = io::stdin();
+
+                // Don't use read_until
+                stdin.lock().read_until(until, &mut buf).unwrap();
+            }
+
+            let (env_data, store) = env.data_and_store_mut();
+            let memory_view = env_data.memory.clone().unwrap().view(&store);
+
+            memory_view.write(buf_ptr.offset().into(), &buf).unwrap();
+
+            buf.len() as i32
+        }
+
+        filedes => panic!("File descriptor {} is not supported!", filedes),
+    }
+}
+
 fn run_wasm(bytes: &Vec<u8>) {
     let mut store = Store::default();
     let module = Module::new(&store, bytes).unwrap();
 
     let env = FunctionEnv::new(&mut store, Env { memory: None });
     let import_object = imports! {
-        "fig" => {
+        "io" => {
             "print" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
         }
     };
 
@@ -95,6 +134,54 @@ fn run_wasm(bytes: &Vec<u8>) {
     env.as_mut(&mut store).memory = Some(memory);
     let main_fn = instance.exports.get_function("main").unwrap();
     let _result = main_fn.call(&mut store, &[]).unwrap();
+}
+
+fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
+    let mut store = Store::default();
+    let module = Module::new(&store, bytes).unwrap();
+
+    let env = FunctionEnv::new(&mut store, Env { memory: None });
+    let import_object = imports! {
+        "io" => {
+            "print" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
+        }
+    };
+
+    let instance = Instance::new(&mut store, &module, &import_object).unwrap();
+    let memory = instance.exports.get_memory("memory").unwrap().clone();
+    env.as_mut(&mut store).memory = Some(memory);
+    let main_fn = instance.exports.get_function("main").unwrap();
+
+    let listener = TcpListener::bind(addr).unwrap();
+    //listener.set_nonblocking(false).unwrap();
+
+    for stream in listener.incoming() {
+        let mut stream = stream.unwrap();
+
+        let buf_reader = BufReader::new(&mut stream);
+        let http_request: String = buf_reader
+            .lines()
+            .map(|result| result.unwrap())
+            .take_while(|line| !line.is_empty())
+            .collect();
+
+        let mem = env.as_mut(&mut store).memory.clone().unwrap();
+        let view = mem.view(&store);
+        view.write(mem_offset as u64, &http_request.as_bytes())
+            .unwrap();
+
+        let response_value = main_fn.call(&mut store, &[Value::I32(mem_offset)]).unwrap();
+
+        let response_ptr = WasmPtr::<u8>::new(response_value[0].i32().unwrap() as u32);
+
+        let mem = env.as_mut(&mut store).memory.clone().unwrap();
+        let view = mem.view(&store);
+        let response = response_ptr.read_utf8_string_with_nul(&view).unwrap();
+
+        stream.write(response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+    }
 }
 
 fn main() {
@@ -111,7 +198,7 @@ fn main() {
             }
 
             // Now compile
-            let final_wasm = fig_compile_to_wasm(buffer, 0x0);
+            let (final_wasm, _offset) = fig_compile_to_wasm(buffer, 0x0);
 
             if c_args.print_wat {
                 let wasm = print_bytes(&final_wasm)
@@ -139,9 +226,23 @@ fn main() {
             }
 
             // Now compile
-            let final_wasm = fig_compile_to_wasm(buffer, 0x0);
+            let (final_wasm, _offset) = fig_compile_to_wasm(buffer, 0x0);
 
             run_wasm(&final_wasm);
+        }
+
+        Commands::Server(server_args) => {
+            let mut buffer = String::new();
+            {
+                let mut file = File::open(&server_args.fig_file_path).unwrap();
+                file.read_to_string(&mut buffer).unwrap();
+                file.flush().unwrap();
+            }
+
+            // Now compile
+            let (final_wasm, offset) = fig_compile_to_wasm(buffer, 0x0);
+
+            run_wasm_server(&final_wasm, &server_args.addr, offset);
         }
     }
 }

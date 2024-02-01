@@ -15,7 +15,7 @@ use crate::{
         BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, ConstStatement,
         ExportStatement, Expression, ExternalStatement, FunctionMeta, FunctionStatement,
         Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program,
-        RefValue, ReturnStatement, SetStatement, Statement, StringExpr,
+        RefValue, ReturnStatement, SetStatement, Statement, StringExpr, StructStatement,
     },
     types::types::Type,
 };
@@ -533,6 +533,13 @@ impl<'a> Instructions<'a> for ConstStatement {
     }
 }
 
+impl<'a> StructStatement {
+    fn init(&self, ctx: &'a mut Context) -> CResult<()> {
+        // TODO
+        todo!()
+    }
+}
+
 impl<'a> Instructions<'a> for BlockStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
@@ -650,6 +657,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::External(external) => external.generate_instructions(ctx),
             Statement::Builtin(builtin) => builtin.generate_instructions(ctx),
             Statement::Const(cnst) => cnst.generate_instructions(ctx),
+            //Statement::Struct(strct) => strct.init(ctx),
 
             _ => todo!(),
         }
@@ -699,7 +707,7 @@ pub struct Context {
     pub(crate) local_ctx: LocalContext,
 
     /// Memory (heap) Context
-    pub(crate) memory_ctx: MemoryContext,
+    pub memory_ctx: MemoryContext,
 
     /// Starting point of the memory
     pub(crate) memory_offset: i32,
@@ -765,6 +773,7 @@ impl Context {
     pub fn generate(&mut self) -> Vec<u8> {
         // export memory
         self.export_ctx.export_memory("memory", 0);
+        //self.export_ctx.export_global(&"mem_offset".to_string(), 0);
 
         //TODO
         self.module.section(&self.type_ctx.get_section());
@@ -1028,7 +1037,7 @@ pub struct MemoryContext {
     memory_section: MemorySection,
     data_section: DataSection,
 
-    offset: i32,
+    pub offset: i32,
 }
 
 impl MemoryContext {

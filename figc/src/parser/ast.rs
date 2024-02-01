@@ -377,6 +377,7 @@ pub enum Expression {
     Index(IndexExpr),
     Ref(RefValue),
     DeRef(DeRef),
+    Object(ObjectExpr),
 }
 
 impl<'a> Parse<'a> for Expression {
@@ -409,6 +410,11 @@ impl<'a> Parse<'a> for Expression {
                         Identifier {
                             value: ident.clone(),
                         },
+                    )?))
+                } else if parser.next_token_is(Token::LSquirly) {
+                    Ok(Expression::Object(ObjectExpr::parse(
+                        parser,
+                        precedence.clone(),
                     )?))
                 } else {
                     Ok(Expression::Identifier(Identifier::parse(
@@ -776,6 +782,64 @@ impl<'a> Parse<'a> for StructFields {
         }
 
         Ok(Self { fields })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectFields {
+    pub(crate) fields: Vec<(Identifier, Expression)>,
+}
+
+impl<'a> Parse<'a> for ObjectFields {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        parser.next_token();
+
+        let mut fields: Vec<(Identifier, Expression)> = vec![];
+
+        while !parser.current_token_is(Token::RSquirly) && !parser.current_token_is(Token::Eof) {
+            // The first part will be identifier like `length: 5`
+            // we will parse the length first
+            let ident = Identifier::parse(parser, None)?;
+
+            // Now we will parse the expr section like `: expr`
+            //
+            // Skip the `:`
+            parser.expect_peek(Token::Colon)?;
+            parser.next_token();
+
+            let expr = Expression::parse(parser, None)?;
+
+            fields.push((ident, expr));
+
+            parser.expect_peek(Token::Comma)?;
+            parser.next_token();
+        }
+
+        Ok(Self { fields })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectExpr {
+    pub(crate) name: Identifier,
+    pub(crate) fields: ObjectFields,
+}
+
+impl<'a> Parse<'a> for ObjectExpr {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        // First we need to parse Object name
+        let object_name = Identifier::parse(parser, None)?;
+
+        parser.expect_peek(Token::LSquirly)?;
+
+        // Now parse the fields
+        let fields = ObjectFields::parse(parser, None)?;
+
+        // Now return the object expression
+        Ok(Self {
+            name: object_name,
+            fields,
+        })
     }
 }
 
