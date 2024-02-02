@@ -90,7 +90,15 @@ fn fig_print(mut env: FunctionEnvMut<Env>, p: WasmPtr<u8>) {
     let (env_data, store) = env.data_and_store_mut();
     let memory_view = env_data.memory.clone().unwrap().view(&store);
 
-    println!("{}", p.read_utf8_string_with_nul(&memory_view).unwrap())
+    println!("{}", p.read_utf8_string_with_nul(&memory_view).unwrap());
+}
+
+fn fig_print_int(int: i32) {
+    println!("{}", int);
+}
+
+fn fig_print_char(c: i32) {
+    println!("{}", char::from(c as u8));
 }
 
 // fn(...) -> number of bytes actually read ( i32 ).
@@ -124,7 +132,9 @@ fn run_wasm(bytes: &Vec<u8>) {
     let env = FunctionEnv::new(&mut store, Env { memory: None });
     let import_object = imports! {
         "io" => {
-            "print" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "print_int" => Function::new_typed(&mut store, fig_print_int),
+            "print_char" => Function::new_typed(&mut store, fig_print_char),
             "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
         }
     };
@@ -143,20 +153,23 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
     let env = FunctionEnv::new(&mut store, Env { memory: None });
     let import_object = imports! {
         "io" => {
-            "print" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
+            "print_int" => Function::new_typed(&mut store, fig_print_int),
+            "print_char" => Function::new_typed(&mut store, fig_print_char),
             "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
         }
     };
-
-    let instance = Instance::new(&mut store, &module, &import_object).unwrap();
-    let memory = instance.exports.get_memory("memory").unwrap().clone();
-    env.as_mut(&mut store).memory = Some(memory);
-    let main_fn = instance.exports.get_function("main").unwrap();
 
     let listener = TcpListener::bind(addr).unwrap();
     //listener.set_nonblocking(false).unwrap();
 
     for stream in listener.incoming() {
+        let instance = Instance::new(&mut store, &module, &import_object).unwrap();
+        let memory = instance.exports.get_memory("memory").unwrap().clone();
+        let mem_offset_glob = instance.exports.get_global("mem_offset").unwrap();
+        env.as_mut(&mut store).memory = Some(memory);
+        let main_fn = instance.exports.get_function("main").unwrap();
+
         let mut stream = stream.unwrap();
 
         let buf_reader = BufReader::new(&mut stream);
@@ -165,6 +178,13 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
             .map(|result| result.unwrap())
             .take_while(|line| !line.is_empty())
             .collect();
+
+        mem_offset_glob
+            .set(
+                &mut store,
+                Value::I32(mem_offset + http_request.len() as i32 + 1),
+            )
+            .unwrap();
 
         let mem = env.as_mut(&mut store).memory.clone().unwrap();
         let view = mem.view(&store);
