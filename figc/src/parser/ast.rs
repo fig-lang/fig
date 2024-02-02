@@ -374,6 +374,7 @@ pub enum Expression {
     If(IfExpr),
     Call(CallExpr),
     String(StringExpr),
+    Char(CharExpr),
     Index(IndexExpr),
     Ref(RefValue),
     DeRef(DeRef),
@@ -438,6 +439,8 @@ impl<'a> Parse<'a> for Expression {
 
             Token::String(_) => Ok(Expression::String(StringExpr::parse(parser, None)?)),
 
+            Token::Char(_) => Ok(Expression::Char(CharExpr::parse(parser, None)?)),
+
             // Parse grouped expressions
             Token::Lparen => {
                 parser.next_token();
@@ -496,6 +499,20 @@ impl<'a> Parse<'a> for StringExpr {
             Token::String(s) => Ok(Self {
                 string: s.to_owned(),
             }),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CharExpr {
+    pub(crate) ch: char,
+}
+
+impl<'a> Parse<'a> for CharExpr {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        match &parser.current_token {
+            Token::Char(s) => Ok(Self { ch: s.to_owned() }),
             _ => unreachable!(),
         }
     }

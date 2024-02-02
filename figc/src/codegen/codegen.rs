@@ -12,10 +12,11 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, ConstStatement,
-        ExportStatement, Expression, ExternalStatement, FunctionMeta, FunctionStatement,
-        Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement, LoopStatement, Program,
-        RefValue, ReturnStatement, SetStatement, Statement, StringExpr, StructStatement,
+        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, CharExpr,
+        ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
+        FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
+        LoopStatement, Program, RefValue, ReturnStatement, SetStatement, Statement, StringExpr,
+        StructStatement,
     },
     types::types::Type,
 };
@@ -138,6 +139,13 @@ impl<'a> Instructions<'a> for StringExpr {
         let ptr = self.allocate(ctx);
 
         Ok(vec![Instruction::I32Const(ptr)])
+    }
+}
+
+impl<'a> Instructions<'a> for CharExpr {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        // TODO: Is this Ok ?
+        Ok(vec![Instruction::I32Const(self.ch as i32)])
     }
 }
 
@@ -309,24 +317,25 @@ impl IndexExpr {
         let variable = ctx.local_ctx.get_local_type(&self.variable.value).unwrap();
 
         match variable {
-            Type::String => {
-                offset.extend([
-                    Instruction::I32Load(MemArg {
+            Type::Array(arr_type) => match *arr_type.clone() {
+                Type::Char => {
+                    offset.extend([Instruction::I32Load8U(MemArg {
                         offset: 0,
                         align: 0,
                         memory_index: 0,
-                    }),
-                    Instruction::I32Const(65536),
-                    Instruction::I32RemS,
-                ]);
-            }
+                    })]);
+                }
+                _ => {
+                    offset.push(Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }));
+                }
+            },
 
             _ => {
-                offset.push(Instruction::I32Load(MemArg {
-                    offset: 0,
-                    align: 0,
-                    memory_index: 0,
-                }));
+                panic!();
             }
         }
 
@@ -459,6 +468,7 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Identifier(ident) => Ok(ident.generate_instructions(ctx)?),
             Expression::Call(call) => Ok(call.generate_instructions(ctx)?),
             Expression::String(s) => Ok(s.generate_instructions(ctx)?),
+            Expression::Char(c) => Ok(c.generate_instructions(ctx)?),
             Expression::If(if_expr) => Ok(if_expr.generate_instructions(ctx)?),
             Expression::Boolean(bool_expr) => Ok(bool_expr.generate_instructions(ctx)?),
 
@@ -658,7 +668,6 @@ impl<'a> Instructions<'a> for Statement {
             Statement::Builtin(builtin) => builtin.generate_instructions(ctx),
             Statement::Const(cnst) => cnst.generate_instructions(ctx),
             //Statement::Struct(strct) => strct.init(ctx),
-
             _ => todo!(),
         }
     }
@@ -773,7 +782,7 @@ impl Context {
     pub fn generate(&mut self) -> Vec<u8> {
         // export memory
         self.export_ctx.export_memory("memory", 0);
-        //self.export_ctx.export_global(&"mem_offset".to_string(), 0);
+        self.export_ctx.export_global(&"mem_offset".to_string(), 0);
 
         //TODO
         self.module.section(&self.type_ctx.get_section());

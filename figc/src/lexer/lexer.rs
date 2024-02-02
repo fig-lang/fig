@@ -65,6 +65,7 @@ impl Lexer {
             }
 
             b'"' => Token::String(self.read_string()),
+            b'\'' => Token::Char(self.read_char_str()),
 
             b'&' => Token::Ref,
 
@@ -131,6 +132,17 @@ impl Lexer {
         while self.ch.is_ascii_whitespace() {
             self.read_char();
         }
+    }
+
+    fn read_char_str(&mut self) -> char {
+        // Skip the ' char
+        self.read_char();
+
+        let ch = self.ch;
+
+        self.read_char();
+
+        char::from(ch)
     }
 
     fn read_ident(&mut self) -> String {

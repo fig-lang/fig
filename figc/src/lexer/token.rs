@@ -47,6 +47,7 @@ pub enum Token {
     False,
 
     String(String),
+    Char(char),
 
     Ref,
 }
@@ -100,6 +101,7 @@ impl Display for Token {
             Builtin => write!(f, "builtin"),
 
             String(s) => write!(f, "'{}'", s),
+            Char(c) => write!(f, "'{}'", c),
 
             Ref => write!(f, "&"),
         }

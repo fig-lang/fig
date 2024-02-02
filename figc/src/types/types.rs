@@ -10,7 +10,7 @@ pub enum Type {
     F32,
     F64,
 
-    String,
+    Char,
 
     Bool,
 
@@ -35,7 +35,7 @@ impl From<String> for Type {
             "i64" => Self::I64,
             "f32" => Self::F32,
             "f64" => Self::F64,
-            "string" => Self::String,
+            "char" => Self::Char,
             "bool" => Self::Bool,
             _ => Self::NotDefined,
         }
@@ -58,7 +58,7 @@ impl TryInto<ValType> for Type {
             Self::Bool => Ok(ValType::I32),
 
             // pointer of the string
-            Self::String => Ok(ValType::I32),
+            Self::Char => Ok(ValType::I32),
 
             Self::Array(_) => Ok(ValType::I32),
 
