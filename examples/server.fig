@@ -93,22 +93,68 @@ fn http_path(request: char[]): char[] {
     return path;
 }
 
+fn add_string(lhs: char[], rhs: char[]): char[] {
+    let lhs_length: i32 = len(lhs);
+    let rhs_length: i32 = len(rhs);
+
+    let new_str: char[] = malloc(lhs_length + rhs_length);
+    let i: i32 = 0;
+
+    loop {
+        if (i == lhs_length) { break; };
+
+        new_str[i] = lhs[i];
+
+        i = i + 1;
+    }
+
+    let y: i32 = 0;
+
+    loop {
+        if (y == rhs_length) { break; };
+
+        new_str[i] = rhs[y];
+
+        i = i + 1;
+        y = y + 1;
+    }
+
+    return new_str;
+}
+
 const Success: char[] = "HTTP/1.1 200 OK
 Connection: Closed
 
 ";
 
+fn new_request(
+    status_code: char[],
+    status_text: char[],
+    headers: char[],
+    body: char[]
+): char[] {
+    return add_string("HTTP/1.1 ",
+        add_string(status_code,
+            add_string(" ",
+                add_string(status_text, add_string("
+", add_string(headers, 
+                    add_string("
+
+", body)))))
+        )
+    );
+}
+
 export fn main (request: char[]): char[] {
     let path: char[] = http_path(request);
 
-    print_str(path);
-    
-    if(cmp_string(path, "/fuck")) {
-        return "HTTP/1.1 200 OK
-Content-Type: text/html
-Connection: Closed
+    let sss: char[] = "/fuck";
 
-<h1>FUCK</h1>";
+    let headers: char[] = "Content-Type: text/html
+Connection: Closed";
+    
+    if(cmp_string(path, sss)) {
+        return new_request("200", "OK", headers, "<h1>FUCK2</h1>");
     }
 
     return Success;
