@@ -11,11 +11,11 @@ then create a file `example.fig`:
 
 ```
 external fig {
-    fn print(str: string);
+    fn print_str(str: char[]);
 }
 
 export fn main() {
-    print("Hello World");
+    print_str("Hello World");
 }
 ```
 
