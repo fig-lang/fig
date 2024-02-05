@@ -148,12 +148,10 @@ fn new_request(
 export fn main (request: char[]): char[] {
     let path: char[] = http_path(request);
 
-    let sss: char[] = "/fuck";
-
     let headers: char[] = "Content-Type: text/html
 Connection: Closed";
     
-    if(cmp_string(path, sss)) {
+    if(cmp_string(path, "/fuck")) {
         return new_request("200", "OK", headers, "<h1>FUCK2</h1>");
     }
 
