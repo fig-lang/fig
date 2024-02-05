@@ -46,3 +46,5 @@ export fn main (request: char[]): char[] {
 ```
 
 The `main` function must return the HTTP response as an `char[]` or string. The return will be your app's response to the request.
+
+Also checkout the [server.fig](https://github.com/fig-lang/fig/blob/main/examples/server.fig) example file there is a lot of helper functions that will make the generation of response, Or reading the request easier.
