@@ -95,7 +95,7 @@ const FIG_MONACO_CONFIG = {
         'fn', 'break', 'return', 'let', 'else', 'external', 'builtin', 'export', 'if', 'loop', 'const'],
 
     typeKeywords: [
-        'i32', 'i64', 'string', 'bool'
+        'i32', 'i64', 'char', 'bool'
     ],
 
     parenFollows: [
@@ -186,13 +186,16 @@ const FIG_MONACO_CONFIG = {
     },
 };
 
-const PRELUDE = `external console { fn log(n: i32); fn log_str(s: string); }
+const MAIN_EXAMPLE = `external console {
+    fn log(n: i32);
+    fn log_str(s: char[]);
+}
+
 builtin fn malloc(size: i32): i32;
 builtin fn free(size: i32): i32;
-`;
 
-const MAIN_EXAMPLE = `export fn main() {
-    let x: string = "Hello World";
+export fn main() {
+    let x: char[] = "Hello World";
     log_str(x);
 }
 `;
@@ -333,7 +336,7 @@ function string_from_chars(chars) {
         DOM.compile_btn.addEventListener("click", async () => {
             DOM.console.innerHTML = "";
             try {
-                const source = PRELUDE + editor.getValue();
+                const source = editor.getValue();
                 const result = wasm_main(source, memory_offset);
                 const mod = wabt.readWasm(result, { readDebugNames: true });
 
