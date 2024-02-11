@@ -598,8 +598,8 @@ impl<'a> Parse<'a> for IndexExpr {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrefixExpr {
-    operator: Token,
-    right: Box<Expression>,
+    pub(crate) operator: Token,
+    pub(crate) right: Box<Expression>,
 }
 
 impl<'a> Parse<'a> for PrefixExpr {

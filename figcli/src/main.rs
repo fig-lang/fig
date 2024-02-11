@@ -8,11 +8,10 @@ use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::exit;
 use wasmer::{
-    imports, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, Module, Store, Value, WasmPtr,
+    imports, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, Module, Store, TypedFunction,
+    Value, WasmPtr,
 };
 use wasmprinter::print_bytes;
-
-use std::io;
 use std::io::prelude::*;
 use std::net::TcpListener;
 
@@ -82,8 +81,10 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
     (buf, ctx.memory_ctx.offset)
 }
 
+#[derive(Clone)]
 struct Env {
     memory: Option<Memory>,
+    alloc_func: Option<TypedFunction<i32, i32>>,
 }
 
 fn fig_print(mut env: FunctionEnvMut<Env>, p: WasmPtr<u8>) {
@@ -101,41 +102,54 @@ fn fig_print_char(c: i32) {
     println!("{}", char::from(c as u8));
 }
 
-// fn(...) -> number of bytes actually read ( i32 ).
-fn fig_read(mut env: FunctionEnvMut<Env>, fd: i32, buf_ptr: WasmPtr<u8>, until: u8) -> i32 {
-    match fd {
-        1 => {
-            let mut buf: Vec<u8> = Vec::new();
-            {
-                let stdin = io::stdin();
+fn fig_read_file(mut env: FunctionEnvMut<Env>, addr: WasmPtr<u8>) -> i32 {
+    let (env_data, mut store) = env.data_and_store_mut();
+    let mut file_content: Vec<u8> = Vec::new();
 
-                // Don't use read_until
-                stdin.lock().read_until(until, &mut buf).unwrap();
-            }
+    {
+        let memory_view = env_data.memory.clone().unwrap().view(&mut store);
 
-            let (env_data, store) = env.data_and_store_mut();
-            let memory_view = env_data.memory.clone().unwrap().view(&store);
+        let addr_str = addr.read_utf8_string_with_nul(&memory_view).unwrap();
 
-            memory_view.write(buf_ptr.offset().into(), &buf).unwrap();
+        let mut file = File::open(addr_str).unwrap();
 
-            buf.len() as i32
-        }
-
-        filedes => panic!("File descriptor {} is not supported!", filedes),
+        file.read_to_end(&mut file_content).unwrap();
     }
+
+    let buf = env_data
+        .alloc_func
+        .clone()
+        .unwrap()
+        .call(&mut store, file_content.len() as i32 + 1)
+        .unwrap();
+
+    let memory_view = env_data.memory.clone().unwrap().view(&mut store);
+
+    let buf_ptr = WasmPtr::<u8>::new(buf as u32);
+    memory_view
+        .write(buf_ptr.offset() as u64, &file_content)
+        .unwrap();
+
+    buf
 }
 
 fn run_wasm(bytes: &Vec<u8>) {
     let mut store = Store::default();
     let module = Module::new(&store, bytes).unwrap();
 
-    let env = FunctionEnv::new(&mut store, Env { memory: None });
+    let env = FunctionEnv::new(
+        &mut store,
+        Env {
+            memory: None,
+            alloc_func: None,
+        },
+    );
     let import_object = imports! {
         "io" => {
             "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
             "print_int" => Function::new_typed(&mut store, fig_print_int),
             "print_char" => Function::new_typed(&mut store, fig_print_char),
-            "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
+            "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
         }
     };
 
@@ -150,24 +164,34 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
     let mut store = Store::default();
     let module = Module::new(&store, bytes).unwrap();
 
-    let env = FunctionEnv::new(&mut store, Env { memory: None });
+    let env = FunctionEnv::new(
+        &mut store,
+        Env {
+            memory: None,
+            alloc_func: None,
+        },
+    );
     let import_object = imports! {
         "io" => {
             "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
             "print_int" => Function::new_typed(&mut store, fig_print_int),
             "print_char" => Function::new_typed(&mut store, fig_print_char),
-            "read_until" => Function::new_typed_with_env(&mut store, &env, fig_read),
+            "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
         }
     };
 
     let listener = TcpListener::bind(addr).unwrap();
-    //listener.set_nonblocking(false).unwrap();
 
     for stream in listener.incoming() {
         let instance = Instance::new(&mut store, &module, &import_object).unwrap();
         let memory = instance.exports.get_memory("memory").unwrap().clone();
         let mem_offset_glob = instance.exports.get_global("mem_offset").unwrap();
+        let alloc_func = instance
+            .exports
+            .get_typed_function(&store, "malloc")
+            .unwrap();
         env.as_mut(&mut store).memory = Some(memory);
+        env.as_mut(&mut store).alloc_func = Some(alloc_func.clone());
         let main_fn = instance.exports.get_function("main").unwrap();
 
         let mut stream = stream.unwrap();

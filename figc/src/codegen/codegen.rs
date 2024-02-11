@@ -16,7 +16,7 @@ use crate::{
         ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
         FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
         LoopStatement, Program, RefValue, ReturnStatement, SetStatement, Statement, StringExpr,
-        StructStatement,
+        StructStatement, PrefixExpr,
     },
     types::types::Type,
 };
@@ -198,6 +198,27 @@ impl<'a> Instructions<'a> for BooleanExpr {
     }
 }
 
+impl<'a> Instructions<'a> for PrefixExpr {
+    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        todo!();
+        //let mut result: Vec<Instruction> = vec![];
+
+        //let right_side = self.right.generate_instructions(ctx)?;
+
+        //result.extend(right_side);
+
+        //match self.operator {
+        //    Token::Minus => {
+        //        result.push(Instruction::F32Neg);
+        //    }
+
+        //    _ => panic!("Just - operation allowed"),
+        //}
+
+        //Ok(result)
+    }
+}
+
 impl<'a> Instructions<'a> for InfixExpr {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
@@ -224,6 +245,7 @@ impl<'a> Instructions<'a> for ExternalStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         for func in &self.body.function_types {
             let (param_types, result_type) = func.types()?;
+
             let type_id = ctx
                 .type_ctx
                 .new_function_type(param_types.clone(), result_type);
@@ -265,15 +287,20 @@ impl<'a> Instructions<'a> for BuiltinStatement {
 
                 ctx.code_ctx.add_local(ValType::I32);
                 ctx.code_ctx.new_function_code(malloc(), "malloc".into());
+
+                // TODO: Add this to export generate_instructions functions
+                ctx.export_ctx
+                    .export_function(&"malloc".to_owned(), type_index);
             }
 
             "free" => {
-                let type_index = ctx.type_ctx.new_function_type(vec![ValType::I32], vec![]);
+                panic!("free(size: i32); Not working well !");
+                //let type_index = ctx.type_ctx.new_function_type(vec![ValType::I32], vec![]);
 
-                ctx.function_ctx
-                    .new_function(type_index, "free".to_string(), vec![]);
+                //ctx.function_ctx
+                //    .new_function(type_index, "free".to_string(), vec![]);
 
-                ctx.code_ctx.new_function_code(free(), "free".into());
+                //ctx.code_ctx.new_function_code(free(), "free".into());
             }
 
             _ => todo!(),
@@ -465,6 +492,7 @@ impl<'a> Instructions<'a> for Expression {
         match self {
             Expression::Integer(int) => Ok(int.generate_instructions(ctx)?),
             Expression::Infix(infix) => Ok(infix.generate_instructions(ctx)?),
+            Expression::Prefix(prefix) => Ok(prefix.generate_instructions(ctx)?),
             Expression::Identifier(ident) => Ok(ident.generate_instructions(ctx)?),
             Expression::Call(call) => Ok(call.generate_instructions(ctx)?),
             Expression::String(s) => Ok(s.generate_instructions(ctx)?),
