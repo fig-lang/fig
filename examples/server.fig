@@ -2,11 +2,10 @@ external io {
     fn print_str(s: char[]);
     fn print_int(s: i32);
     fn print_char(c: char);
-    fn read_until(fd: i32, buf: i32[], until: i32): i32;
+    fn read_file(addr: char[]): i32;
 }
 
 builtin fn malloc(size: i32): i32;
-builtin fn free(size: i32);
 
 fn len(ptr: char[]): i32 {
     let length: i32 = 0;
@@ -150,10 +149,14 @@ export fn main (request: char[]): char[] {
 
     let headers: char[] = "Content-Type: text/html
 Connection: Closed";
-    
-    if(cmp_string(path, "/fuck")) {
-        return new_request("200", "OK", headers, "<h1>FUCK2</h1>");
+
+    if (cmp_string(path, "/")) {
+        let file: char[] = read_file("./index.html");
+
+        return new_request("200", "OK", headers, file);
     }
 
-    return Success;
+    let afile: char[] = read_file(add_string("./", path));
+
+    return new_request("200", "OK", headers, afile);
 }
