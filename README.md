@@ -1,4 +1,4 @@
-# Fig
+# The Fig Programming Language
 Fig-lang source code, containing the compiler, CLI, web, and examples
 
 ## Stage
