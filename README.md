@@ -5,7 +5,7 @@ Fig-lang source code, containing the compiler, CLI, web, and examples
 Fig-lang is currently in the early stages of development. You can test the Early development version on [Playground](https://fig-lang.github.io/fig/).
 
 # Installation
-Here's an script that will download the latest FigLang release and install it on you Linux or MacOs machine.
+Here's an bash command that will download the latest FigLang release and install it on you Linux or MacOs machine.
 
 ```bash
 curl https://raw.githubusercontent.com/fig-lang/fig/main/install.sh | bash
