@@ -1,10 +1,10 @@
 # Fig
 Fig-lang source code, containing the compiler, CLI, web, and examples
 
-# Stage
+## Stage
 Fig-lang is currently in the early stages of development. You can test the Early development version on [Playground](https://fig-lang.github.io/fig/).
 
-# Installation
+## Installation
 Here's a bash command to download the latest FigLang release and install it on your Linux or MacOS machine.
 
 ```bash
@@ -12,7 +12,7 @@ curl https://raw.githubusercontent.com/fig-lang/fig/main/install.sh | bash
 ```
 **This installation script currently doesn't support `zsh`**
 
-# Hello World in Fig
+## Hello World in Fig
 ```
 external io {
     fn print_str(str: char[]);
@@ -29,7 +29,7 @@ To run this simple fig program run `fig run ./{file name}`
 
 Also, you can test out fig files in `examples` folder.
 
-# Server-side
+## Server-side
 You can write server-side applications with FigLang, FigCli has a command called `server` That will listen to the address and port you specified,
 each time a request arrives the CLI will run the script and pass the HTTP request content to the main function.
 
