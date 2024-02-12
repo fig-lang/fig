@@ -10,7 +10,7 @@ Here's a bash command to download the latest FigLang release and install it on y
 ```bash
 curl https://raw.githubusercontent.com/fig-lang/fig/main/install.sh | bash
 ```
-This installation script currently doesn't support `zsh`
+**This installation script currently doesn't support `zsh`**
 
 # Hello World in Fig
 ```
