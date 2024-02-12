@@ -13,7 +13,7 @@ echo 'export PATH="$HOME/.fig/bin:$PATH"' >> $HOME/.bashrc
 
 echo "Run this to enable fig-cli in this terminal instance"
 echo ''
-echo 'export PATH="$HOME/.fig/bin:$PATH" >> $HOME/.bashrc'
+echo 'export PATH="$HOME/.fig/bin:$PATH"'
 echo ''
 
 echo "Or restart your terminal to use fig-cli"
