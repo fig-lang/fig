@@ -102,6 +102,10 @@ fn fig_print_char(c: i32) {
     println!("{}", char::from(c as u8));
 }
 
+fn fig_print_float(f: f32) {
+    println!("{}", f);
+}
+
 fn fig_read_file(mut env: FunctionEnvMut<Env>, addr: WasmPtr<u8>) -> i32 {
     let (env_data, mut store) = env.data_and_store_mut();
     let mut file_content: Vec<u8> = Vec::new();
@@ -149,6 +153,7 @@ fn run_wasm(bytes: &Vec<u8>) {
             "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
             "print_int" => Function::new_typed(&mut store, fig_print_int),
             "print_char" => Function::new_typed(&mut store, fig_print_char),
+            "print_float" => Function::new_typed(&mut store,  fig_print_float),
             "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
         }
     };
@@ -176,6 +181,7 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
             "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
             "print_int" => Function::new_typed(&mut store, fig_print_int),
             "print_char" => Function::new_typed(&mut store, fig_print_char),
+            "print_float" => Function::new_typed(&mut store,  fig_print_float),
             "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
         }
     };
