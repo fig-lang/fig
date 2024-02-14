@@ -15,13 +15,13 @@ use crate::{
         BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, CharExpr,
         ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
         FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
-        LoopStatement, Program, RefValue, ReturnStatement, SetStatement, Statement, StringExpr,
-        StructStatement, PrefixExpr,
+        LoopStatement, PrefixExpr, Program, RefValue, ReturnStatement, SetStatement, Statement,
+        StringExpr, StructStatement,
     },
     types::types::Type,
 };
 
-use super::builtins::{free, malloc};
+use super::builtins::malloc;
 
 #[derive(Debug)]
 pub enum CompilerError {
@@ -98,13 +98,17 @@ impl<'a> Instructions<'a> for CallExpr {
             result.extend(arg.generate_instructions(ctx)?);
         }
 
-        let func_id = match ctx.function_ctx.get_function(&self.function.value) {
-            Some(func) => Ok(func.id),
+        let (func_id, return_type) = match ctx.function_ctx.get_function(&self.function.value) {
+            Some(func) => Ok((func.id, func.return_type.clone())),
             None => Err(CompilerError::NotDefined(format!(
                 "Function with name {} is not defined!",
                 self.function.value
             ))),
         }?;
+
+        if let Some(return_ty) = return_type {
+            ctx.type_ctx.set_active_type(return_ty);
+        }
 
         result.push(Instruction::Call(func_id));
 
@@ -171,18 +175,81 @@ impl<'a> Instructions<'a> for RefValue {
 }
 
 impl<'a> Instructions<'a> for Token {
-    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // Todo check type
         match self {
-            Token::Plus => Ok(vec![Instruction::I32Add]),
-            Token::Minus => Ok(vec![Instruction::I32Sub]),
-            Token::ForwardSlash => Ok(vec![Instruction::I32DivS]),
-            Token::Asterisk => Ok(vec![Instruction::I32Mul]),
-            Token::Equal => Ok(vec![Instruction::I32Eq]),
-            Token::NotEqual => Ok(vec![Instruction::I32Ne]),
-            Token::LessThan => Ok(vec![Instruction::I32LeS]),
-            Token::GreaterThan => Ok(vec![Instruction::I32GtS]),
-            Token::Mod => Ok(vec![Instruction::I32RemS]),
+            Token::Plus => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32Add,
+                Type::I64 => Instruction::I64Add,
+                Type::F32 => Instruction::F32Add,
+                Type::F64 => Instruction::F64Add,
+
+                _ => Instruction::I32Add,
+            }]),
+            Token::Minus => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32Sub,
+                Type::I64 => Instruction::I64Sub,
+                Type::F32 => Instruction::F32Sub,
+                Type::F64 => Instruction::F64Sub,
+
+                _ => Instruction::I32Sub,
+            }]),
+            Token::ForwardSlash => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32DivS,
+                Type::I64 => Instruction::I64DivS,
+                Type::F32 => Instruction::F32Div,
+                Type::F64 => Instruction::F64Div,
+
+                _ => Instruction::I32DivS,
+            }]),
+            Token::Asterisk => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32Mul,
+                Type::I64 => Instruction::I64Mul,
+                Type::F32 => Instruction::F32Mul,
+                Type::F64 => Instruction::F64Mul,
+
+                _ => Instruction::I32Mul,
+            }]),
+            Token::Equal => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32Eq,
+                Type::I64 => Instruction::I64Eq,
+                Type::F32 => Instruction::F32Eq,
+                Type::F64 => Instruction::F64Eq,
+
+                _ => Instruction::I32Eq,
+            }]),
+            Token::NotEqual => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32Ne,
+                Type::I64 => Instruction::I64Ne,
+                Type::F32 => Instruction::F32Ne,
+                Type::F64 => Instruction::F64Ne,
+
+                _ => Instruction::I32Ne,
+            }]),
+            Token::LessThan => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32LeS,
+                Type::I64 => Instruction::I64LeS,
+                Type::F32 => Instruction::F32Le,
+                Type::F64 => Instruction::F64Le,
+
+                _ => Instruction::I32LeS,
+            }]),
+            Token::GreaterThan => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32GtS,
+                Type::I64 => Instruction::I64GtS,
+                Type::F32 => Instruction::F32Gt,
+                Type::F64 => Instruction::F64Gt,
+
+                _ => Instruction::I32GtS,
+            }]),
+            Token::Mod => Ok(vec![match ctx.type_ctx.active_type {
+                Type::I32 => Instruction::I32RemS,
+                Type::I64 => Instruction::I64RemS,
+                Type::F32 => panic!("Can't REM f32 type"),
+                Type::F64 => panic!("Can't REM f64 type"),
+
+                _ => Instruction::I32RemS,
+            }]),
 
             _ => todo!(),
         }
@@ -199,23 +266,22 @@ impl<'a> Instructions<'a> for BooleanExpr {
 }
 
 impl<'a> Instructions<'a> for PrefixExpr {
-    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        todo!();
-        //let mut result: Vec<Instruction> = vec![];
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let mut result: Vec<Instruction> = vec![];
 
-        //let right_side = self.right.generate_instructions(ctx)?;
+        match self.operator {
+            Token::Minus => {
+                ctx.type_ctx.set_active_type(Type::F32);
+                let right_side = self.right.generate_instructions(ctx)?;
 
-        //result.extend(right_side);
+                result.extend(right_side);
+                result.push(Instruction::F32Neg);
+            }
 
-        //match self.operator {
-        //    Token::Minus => {
-        //        result.push(Instruction::F32Neg);
-        //    }
+            _ => panic!("Just - is operation allowed"),
+        }
 
-        //    _ => panic!("Just - operation allowed"),
-        //}
-
-        //Ok(result)
+        Ok(result)
     }
 }
 
@@ -235,9 +301,17 @@ impl<'a> Instructions<'a> for InfixExpr {
 }
 
 impl<'a> Instructions<'a> for Integer {
-    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        // TODO: push the correct type
-        Ok(vec![Instruction::I32Const(self.value)])
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let const_instruction = match ctx.type_ctx.active_type {
+            Type::I32 => Instruction::I32Const(self.value),
+            Type::I64 => Instruction::I64Const(self.value as i64),
+            Type::F32 => Instruction::F32Const(self.value as f32),
+            Type::F64 => Instruction::F64Const(self.value as f64),
+
+            _ => Instruction::I32Const(self.value),
+        };
+
+        Ok(vec![const_instruction])
     }
 }
 
@@ -261,8 +335,11 @@ impl<'a> Instructions<'a> for ExternalStatement {
                 })
                 .collect::<Vec<FunctionParam>>();
 
-            ctx.function_ctx
-                .new_external_function(func.name.value.clone(), params);
+            ctx.function_ctx.new_external_function(
+                func.name.value.clone(),
+                params,
+                func.return_type.clone(),
+            );
 
             ctx.import_ctx.import_func(
                 &self.module.value,
@@ -282,8 +359,12 @@ impl<'a> Instructions<'a> for BuiltinStatement {
                     .type_ctx
                     .new_function_type(vec![ValType::I32], vec![ValType::I32]);
 
-                ctx.function_ctx
-                    .new_function(type_index, "malloc".to_string(), vec![]);
+                ctx.function_ctx.new_function(
+                    type_index,
+                    "malloc".to_string(),
+                    vec![],
+                    Some(Type::I32),
+                );
 
                 ctx.code_ctx.add_local(ValType::I32);
                 ctx.code_ctx.new_function_code(malloc(), "malloc".into());
@@ -478,6 +559,13 @@ impl<'a> Instructions<'a> for ReturnStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result = vec![];
 
+        if let Some(func) = ctx.function_ctx.current_function() {
+            ctx.type_ctx.set_active_type(
+                func.return_type
+                    .unwrap_or_else(|| panic!("This Function doesn't return any value!")),
+            );
+        }
+
         let expr = self.return_value.generate_instructions(ctx)?;
         result.extend(expr);
 
@@ -529,18 +617,31 @@ impl<'a> Instructions<'a> for Identifier {
 impl<'a> Instructions<'a> for LetStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // create the local and set the active local
-        let local_index = ctx
-            .local_ctx
-            .new_local(self.name.value.clone(), self.value_type.clone());
-        ctx.local_ctx.set_active_local(local_index);
 
         let mut result: Vec<Instruction> = vec![];
+
+        if let Some(ty) = self.value_type.clone() {
+            ctx.type_ctx.set_active_type(ty);
+        }
+
         let let_value = self.value.generate_instructions(ctx)?;
+
+        let let_type = if let Some(ty) = self.value_type.clone() {
+            ty
+        } else {
+            ctx.type_ctx.active_type.clone()
+        };
+
+        let local_index = ctx
+            .local_ctx
+            .new_local(self.name.value.clone(), let_type.clone());
+
+        ctx.local_ctx.set_active_local(local_index);
 
         result.extend(let_value);
 
         // create new local
-        ctx.code_ctx.add_local(self.value_type.clone().try_into()?);
+        ctx.code_ctx.add_local(let_type.try_into()?);
 
         if !ctx.local_ctx.get_already_set() {
             result.push(Instruction::LocalSet(local_index));
@@ -664,8 +765,12 @@ impl<'a> Instructions<'a> for Statement {
                         .new_local(name.value.to_owned(), ty.to_owned());
                 }
 
-                ctx.function_ctx
-                    .new_function(type_index, func.meta.name.value.clone(), params);
+                ctx.function_ctx.new_function(
+                    type_index,
+                    func.meta.name.value.clone(),
+                    params,
+                    func.meta.return_type.clone(),
+                );
 
                 let block = func.generate_instructions(ctx)?;
                 ctx.code_ctx
@@ -714,6 +819,8 @@ impl<'a> Instructions<'a> for Program {
                     ctx.errors.push(error);
                 }
             };
+
+            ctx.type_ctx.set_active_type(Type::I32);
         }
 
         Ok(result)
@@ -839,6 +946,7 @@ impl Context {
 pub struct TypeContext {
     section: TypeSection,
     types_index: u32,
+    active_type: Type,
 }
 
 impl TypeContext {
@@ -846,6 +954,7 @@ impl TypeContext {
         Self {
             section: TypeSection::new(),
             types_index: 0,
+            active_type: Type::I32,
         }
     }
 
@@ -866,12 +975,17 @@ impl TypeContext {
     pub fn get_section(&self) -> TypeSection {
         self.section.clone()
     }
+
+    pub fn set_active_type(&mut self, new_active_ty: Type) {
+        self.active_type = new_active_ty;
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionData {
     name: String,
     params: Vec<FunctionParam>,
+    return_type: Option<Type>,
     id: u32,
 }
 
@@ -907,10 +1021,16 @@ impl FunctionContext {
         self.functions.get(function_name)
     }
 
-    pub fn new_external_function(&mut self, name: String, params: Vec<FunctionParam>) {
+    pub fn new_external_function(
+        &mut self,
+        name: String,
+        params: Vec<FunctionParam>,
+        return_type: Option<Type>,
+    ) {
         let new_fn = FunctionData {
             name: name.clone(),
             params,
+            return_type,
             id: self.functions_index,
         };
 
@@ -920,10 +1040,17 @@ impl FunctionContext {
         //self.section.function(index);
     }
 
-    pub fn new_function(&mut self, type_index: u32, name: String, params: Vec<FunctionParam>) {
+    pub fn new_function(
+        &mut self,
+        type_index: u32,
+        name: String,
+        params: Vec<FunctionParam>,
+        return_type: Option<Type>,
+    ) {
         let new_fn = FunctionData {
             name: name.clone(),
             params,
+            return_type,
             id: self.functions_index,
         };
 

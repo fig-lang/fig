@@ -119,7 +119,7 @@ impl<'a> Parse<'a> for BlockStatement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LetStatement {
-    pub(crate) value_type: Type,
+    pub(crate) value_type: Option<Type>,
     pub(crate) name: Identifier,
     pub(crate) value: Expression,
 }
@@ -160,9 +160,13 @@ impl<'a> Parse<'a> for LetStatement {
 
         let ident = Identifier::parse(parser, precedence.clone())?;
 
-        parser.next_token();
+        let value_type = if parser.next_token_is(Token::Colon) {
+            parser.next_token();
 
-        let value_type = Type::parse(parser, precedence)?;
+            Some(Type::parse(parser, precedence)?)
+        } else {
+            None
+        };
 
         parser.expect_peek(Token::Assign)?;
         parser.next_token();
