@@ -27,6 +27,7 @@ use super::builtins::malloc;
 pub enum CompilerError {
     NotDefined(String),
     NotSupported(String),
+    Type(String),
 }
 
 impl CompilerError {
@@ -50,6 +51,7 @@ impl Display for CompilerError {
         match self {
             CompilerError::NotDefined(msg) => write!(f, "{}", msg),
             CompilerError::NotSupported(msg) => write!(f, "{}", msg),
+            CompilerError::Type(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -176,7 +178,6 @@ impl<'a> Instructions<'a> for RefValue {
 
 impl<'a> Instructions<'a> for Token {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        // Todo check type
         match self {
             Token::Plus => Ok(vec![match ctx.type_ctx.active_type {
                 Type::I32 => Instruction::I32Add,
@@ -289,8 +290,16 @@ impl<'a> Instructions<'a> for InfixExpr {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let mut result: Vec<Instruction> = vec![];
         let left_side = self.left.generate_instructions(ctx)?;
+        let left_side_type = ctx.type_ctx.active_type.clone();
         let operation = self.operator.generate_instructions(ctx)?;
         let right_side = self.right.generate_instructions(ctx)?;
+        let right_side_type = ctx.type_ctx.active_type.clone();
+
+        if left_side_type != right_side_type {
+            return Err(CompilerError::Type(
+                "Left hand side is not equal to right hand side.".to_string(),
+            ));
+        }
 
         result.extend(left_side);
         result.extend(right_side);
