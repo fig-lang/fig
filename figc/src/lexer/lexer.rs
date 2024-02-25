@@ -86,6 +86,7 @@ impl Lexer {
                         "struct" => Token::Struct,
                         "let" => Token::Let,
                         "const" => Token::Const,
+                        "import" => Token::Import,
                         "if" => Token::If,
                         "false" => Token::False,
                         "true" => Token::True,

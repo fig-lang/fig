@@ -39,6 +39,7 @@ pub enum Token {
     Loop,
     Export,
     Break,
+    Import,
 
     If,
     Else,
@@ -88,6 +89,8 @@ impl Display for Token {
             Struct => write!(f, "struct"),
             Let => write!(f, "let"),
             Const => write!(f, "const"),
+
+            Import => write!(f, "import"),
 
             If => write!(f, "if"),
             Else => write!(f, "else"),
