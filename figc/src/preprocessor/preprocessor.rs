@@ -26,7 +26,11 @@ impl<'a> PreProcess<'a> for Statement {
                     let mut parser = Parser::new(&mut lexer);
                     let program = Program::parse(&mut parser, None);
 
-                    program.statements
+                    let mut new_prep = prep.clone();
+
+                    new_prep.program = program;
+
+                    new_prep.process().statements
                 }
 
                 ImportType::Path(p) => {
@@ -41,7 +45,11 @@ impl<'a> PreProcess<'a> for Statement {
                     let mut parser = Parser::new(&mut lexer);
                     let program = Program::parse(&mut parser, None);
 
-                    program.statements
+                    let mut new_prep = prep.clone();
+
+                    new_prep.program = program;
+
+                    new_prep.process().statements
                 }
             },
 
@@ -50,6 +58,7 @@ impl<'a> PreProcess<'a> for Statement {
     }
 }
 
+#[derive(Clone)]
 pub struct Preprocessor {
     program: Program,
     modules: HashMap<String, String>,
