@@ -14,9 +14,7 @@ curl https://raw.githubusercontent.com/fig-lang/fig/main/install.sh | bash
 
 ## Hello World in Fig
 ```
-external io {
-    fn print_str(str: char[]);
-}
+import std;
 
 export fn main() {
     print_str("Hello World");
