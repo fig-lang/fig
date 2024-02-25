@@ -1,6 +1,6 @@
 builtin fn malloc(size: i32): i32;
 
-fn len(str_ptr: i32): i32 {
+fn len(str_ptr: i32[]): i32 {
     let length: i32 = 0;
 
     loop {
@@ -12,10 +12,10 @@ fn len(str_ptr: i32): i32 {
     return length;
 }
 
-fn copy_str(str: i32): i32 {
+fn copy_str(str: i32[]): i32 {
     let i: i32 = 0;
     let length: i32 = len(str);
-    let new_str: i32 = malloc(length + 1);
+    let new_str: i32[] = malloc(length + 1);
 
     loop {
         if (i == length) { break; };
@@ -28,7 +28,7 @@ fn copy_str(str: i32): i32 {
     return new_str;
 }
 
-fn cmp_string(lhs: string, rhs: string): bool {
+fn cmp_string(lhs: i32[], rhs: i32[]): bool {
     let i: i32 = 0;
 
     loop {
@@ -43,12 +43,4 @@ fn cmp_string(lhs: string, rhs: string): bool {
     }
 
     return true;
-}
-
-fn test () {
-    let x: bool = if true {
-        return true;
-    } else {
-        return false;
-    }
 }
