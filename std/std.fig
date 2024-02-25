@@ -1,3 +1,11 @@
+external io {
+    fn print_str(s: char[]);
+    fn print_char(c: char);
+    fn print_int(i: i32);
+    fn print_float(f: f32);
+    fn read_file(path: char[]): char[];
+}
+
 builtin fn malloc(size: i32): i32;
 
 fn len(str_ptr: i32[]): i32 {
@@ -12,7 +20,7 @@ fn len(str_ptr: i32[]): i32 {
     return length;
 }
 
-fn copy_str(str: i32[]): i32 {
+fn copy_str(str: char[]): i32 {
     let i: i32 = 0;
     let length: i32 = len(str);
     let new_str: i32[] = malloc(length + 1);
@@ -28,7 +36,7 @@ fn copy_str(str: i32[]): i32 {
     return new_str;
 }
 
-fn cmp_string(lhs: i32[], rhs: i32[]): bool {
+fn cmp_string(lhs: char[], rhs: char[]): bool {
     let i: i32 = 0;
 
     loop {
@@ -43,4 +51,33 @@ fn cmp_string(lhs: i32[], rhs: i32[]): bool {
     }
 
     return true;
+}
+
+fn add_string(lhs: char[], rhs: char[]): char[] {
+    let lhs_length: i32 = len(lhs);
+    let rhs_length: i32 = len(rhs);
+
+    let new_str: char[] = malloc(lhs_length + rhs_length);
+    let i: i32 = 0;
+
+    loop {
+        if (i == lhs_length) { break; };
+
+        new_str[i] = lhs[i];
+
+        i = i + 1;
+    }
+
+    let y: i32 = 0;
+
+    loop {
+        if (y == rhs_length) { break; };
+
+        new_str[i] = rhs[y];
+
+        i = i + 1;
+        y = y + 1;
+    }
+
+    return new_str;
 }
