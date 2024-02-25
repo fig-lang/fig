@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Read};
 
 use crate::{
     lexer::lexer::Lexer,
@@ -29,7 +29,20 @@ impl<'a> PreProcess<'a> for Statement {
                     program.statements
                 }
 
-                ImportType::Path(p) => vec![],
+                ImportType::Path(p) => {
+                    let mut file = File::open(p).unwrap();
+
+                    let mut code = String::new();
+
+                    file.read_to_string(&mut code).unwrap();
+
+                    let mut lexer = Lexer::new(code.clone());
+
+                    let mut parser = Parser::new(&mut lexer);
+                    let program = Program::parse(&mut parser, None);
+
+                    program.statements
+                }
             },
 
             other => vec![other],
