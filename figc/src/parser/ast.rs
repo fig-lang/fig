@@ -227,7 +227,7 @@ pub enum ImportType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportStatement {
-    ty: ImportType,
+    pub(crate) ty: ImportType,
 }
 
 impl<'a> Parse<'a> for ImportStatement {
@@ -245,6 +245,8 @@ impl<'a> Parse<'a> for ImportStatement {
                 parser.current_line(),
             )),
         }?;
+
+        parser.expect_peek(Token::Semicolon)?;
 
         Ok(Self { ty: import_type })
     }

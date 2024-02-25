@@ -18,9 +18,10 @@ impl Lexer {
             line_no: 0,
             input: input.into_bytes(),
         };
+
         lex.read_char();
 
-        return lex;
+        lex
     }
 
     pub fn next_token(&mut self) -> Result<Token, String> {

@@ -2,6 +2,7 @@ pub mod codegen;
 pub mod lexer;
 pub mod parser;
 pub mod types;
+pub mod preprocessor;
 
 use wasm_bindgen::prelude::*;
 

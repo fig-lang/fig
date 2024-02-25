@@ -32,17 +32,17 @@ pub enum CompilerError {
 
 impl CompilerError {
     pub fn not_defined<'a>(what: &'a str, name: &'a str, at_line: u32) -> Self {
-        return Self::NotDefined(format!(
+        Self::NotDefined(format!(
             "{} with name {} not defined at line {}",
             what, name, at_line
-        ));
+        ))
     }
 
     pub fn not_supported_expr<'a>(expr: &'a str, statement: &'a str, at_line: u32) -> Self {
-        return Self::NotDefined(format!(
+        Self::NotDefined(format!(
             "Expression {} is not supported in {} statement at line {}",
             expr, statement, at_line
-        ));
+        ))
     }
 }
 
@@ -136,7 +136,7 @@ impl StringExpr {
             .memory_ctx
             .alloc(size as i32, string.as_bytes().to_vec());
 
-        return ptr;
+        ptr
     }
 }
 
@@ -166,7 +166,7 @@ impl<'a> Instructions<'a> for RefValue {
                     )));
                 };
 
-                return Ok(vec![Instruction::I32Const(*id as i32)]);
+                Ok(vec![Instruction::I32Const(*id as i32)])
             }
 
             Expression::Index(index) => Ok(index.get_offset(ctx)?),
@@ -914,7 +914,6 @@ impl Context {
     /// like memory offset
     pub fn bootstrap(&mut self) {
         self.global_ctx
-            // the value 0 is deferent in some runtimes
             .add_global_int("mem_offset", ConstExpr::i32_const(self.memory_offset), true);
     }
 
