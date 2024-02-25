@@ -3,8 +3,11 @@ use figc::codegen::codegen::Context;
 use figc::lexer::lexer::Lexer;
 use figc::parser::ast::Program;
 use figc::parser::parser::Parser as FigParser;
+use figc::preprocessor::preprocessor::Preprocessor;
 use std::fs::File;
+use std::io::prelude::*;
 use std::io::{BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::exit;
 use wasmer::{
@@ -12,8 +15,6 @@ use wasmer::{
     Value, WasmPtr,
 };
 use wasmprinter::print_bytes;
-use std::io::prelude::*;
-use std::net::TcpListener;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -66,6 +67,20 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
     for error in program.get_errors() {
         println!("{}", error);
     }
+
+    let mut preprocessor = Preprocessor::new(program);
+
+    preprocessor.add_module(
+        "std".to_string(),
+        include_str!("../../std/std.fig").to_string(),
+    );
+
+    preprocessor.add_module(
+        "server".to_string(),
+        include_str!("../../std/server.fig").to_string(),
+    );
+
+    let program = preprocessor.process();
 
     let mut ctx = Context::new(program, memory_offset);
     ctx.bootstrap();
