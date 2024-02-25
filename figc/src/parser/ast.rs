@@ -39,6 +39,7 @@ pub enum Statement {
     Let(LetStatement),
     Return(ReturnStatement),
     Expression(Expression),
+    Import(ImportStatement),
     Block(BlockStatement),
     Function(FunctionStatement),
     Struct(StructStatement),
@@ -69,6 +70,7 @@ impl<'a> Parse<'a> for Statement {
     fn parse(parser: &mut Parser<'a>, precedence: Option<Precedence>) -> PResult<Self> {
         match &parser.current_token {
             Token::Const => Ok(Self::Const(ConstStatement::parse(parser, precedence)?)),
+            Token::Import => Ok(Self::Import(ImportStatement::parse(parser, precedence)?)),
             Token::Let => Ok(Self::Let(LetStatement::parse(parser, precedence)?)),
             Token::Return => Ok(Self::Return(ReturnStatement::parse(parser, precedence)?)),
             Token::LSquirly => Ok(Self::Block(BlockStatement::parse(parser, precedence)?)),
@@ -207,7 +209,44 @@ impl<'a> Parse<'a> for ReturnStatement {
             parser.next_token();
         }
 
-        return Ok(ReturnStatement { return_value });
+        Ok(ReturnStatement { return_value })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+/// path => import "module.fig";
+///
+/// mod => import std;
+pub enum ImportType {
+    /// Like "module.fig"
+    Path(String),
+
+    /// Like std
+    Mod(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportStatement {
+    ty: ImportType,
+}
+
+impl<'a> Parse<'a> for ImportStatement {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        // Skip import keyword
+        parser.next_token();
+
+        let import_type = match parser.current_token.clone() {
+            Token::Ident(ident) => Ok(ImportType::Mod(ident)),
+            Token::String(s) => Ok(ImportType::Path(s)),
+
+            tkn => Err(ParserError::expected(
+                "identifier or string",
+                tkn.to_string().as_str(),
+                parser.current_line(),
+            )),
+        }?;
+
+        Ok(Self { ty: import_type })
     }
 }
 
