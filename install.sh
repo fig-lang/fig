@@ -5,7 +5,7 @@ mkdir $HOME/.fig
 mkdir $HOME/.fig/bin
 
 # Get the latest fig release
-wget -O $HOME/.fig/bin/fig https://github.com/fig-lang/fig/releases/download/0.1.0/fig
+wget -O $HOME/.fig/bin/fig https://github.com/fig-lang/fig/releases/download/0.1.1/fig
 
 sudo chmod +x $HOME/.fig/bin/fig
 
