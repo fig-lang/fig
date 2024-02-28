@@ -169,7 +169,7 @@ impl Lexer {
             self.read_char();
         }
 
-        return String::from_utf8_lossy(&self.input[pos..self.position]).to_string();
+        String::from_utf8_lossy(&self.input[pos..self.position]).to_string()
     }
 
     fn read_int(&mut self) -> String {
@@ -178,7 +178,7 @@ impl Lexer {
             self.read_char();
         }
 
-        return String::from_utf8_lossy(&self.input[pos..self.position]).to_string();
+        String::from_utf8_lossy(&self.input[pos..self.position]).to_string()
     }
 
     fn read_string(&mut self) -> String {
@@ -191,7 +191,7 @@ impl Lexer {
             }
         }
 
-        return String::from_utf8_lossy(&self.input[pos..self.position]).to_string();
+        String::from_utf8_lossy(&self.input[pos..self.position]).to_string()
     }
 }
 
