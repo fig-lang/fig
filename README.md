@@ -42,8 +42,15 @@ Here is an example source code of using the server feature in FigCli, It's just 
 `test.fig`:
 
 ```
-export fn main (request: char[]): char[] {
-    // Your code
+import server;
+
+export fn main (req: char[]): char[] {
+    let headers = "Content-Type: text/html
+Connection: Closed";
+
+    let res = new_response("200", "OK", headers, "<h1>Hello World</h1>");
+
+    return res;
 }
 ```
 
