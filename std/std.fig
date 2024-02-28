@@ -8,7 +8,7 @@ external io {
 
 builtin fn malloc(size: i32): i32;
 
-fn len(str_ptr: i32[]): i32 {
+fn len(str_ptr: char[]): i32 {
     let length: i32 = 0;
 
     loop {

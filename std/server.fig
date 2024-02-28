@@ -1,6 +1,6 @@
 import std;
 
-fn http_path(request: char[]): char[] {
+export fn http_path(request: char[]): char[] {
     let request_len: i32 = len(request);
     let i: i32 = 0;
     let path: char[] = malloc(10);
@@ -35,12 +35,12 @@ fn http_path(request: char[]): char[] {
     return path;
 }
 
-const Success: char[] = "HTTP/1.1 200 OK
+export const Success: char[] = "HTTP/1.1 200 OK
 Connection: Closed
 
 ";
 
-fn new_response(
+export fn new_response(
     status_code: char[],
     status_text: char[],
     headers: char[],
