@@ -82,6 +82,10 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
 
     let program = preprocessor.process();
 
+    for error in program.get_errors() {
+        println!("{}", error);
+    }
+
     let mut ctx = Context::new(program, memory_offset);
     ctx.bootstrap();
     ctx.visit().unwrap();
