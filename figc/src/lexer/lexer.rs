@@ -108,14 +108,15 @@ impl Lexer {
         };
 
         self.read_char();
-        return Ok(tok);
+
+        Ok(tok)
     }
 
     fn peek(&self) -> u8 {
         if self.read_position >= self.input.len() {
-            return 0;
+            0
         } else {
-            return self.input[self.read_position];
+            self.input[self.read_position]
         }
     }
 
@@ -131,8 +132,23 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.ch.is_ascii_whitespace() {
+        while self.ch.is_ascii_whitespace() || self.ch == b'/' && self.peek() == b'/' {
+            if self.ch == b'/' && self.peek() == b'/' {
+                self.skip_comment();
+            } else {
+                self.read_char();
+            }
+        }
+    }
+
+    fn skip_comment(&mut self) {
+        while self.ch != b'\n' && self.ch != 0 {
             self.read_char();
+        }
+
+        if self.ch == b'\n' {
+            self.line_no += 1;
+            self.read_char(); // Move past the newline character
         }
     }
 
