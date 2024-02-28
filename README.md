@@ -1,3 +1,9 @@
+
+<p align="center" width="100%">
+  <img width="25%" src="https://github.com/fig-lang/fig/blob/main/logo/transparent-fig-white.png?raw=true"/>
+</p>
+
+
 # The Fig Programming Language
 Fig-lang source code, containing the compiler, CLI, web, and examples
 
