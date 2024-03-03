@@ -21,6 +21,7 @@ pub enum Token {
 
     Plus,
     Comma,
+    Period,
     Semicolon,
     Colon,
     Lparen,
@@ -76,12 +77,13 @@ impl Display for Token {
 
             Plus => write!(f, "+"),
             Comma => write!(f, ","),
+            Period => write!(f, "."),
             Semicolon => write!(f, ";"),
             Colon => write!(f, ":"),
             Lparen => write!(f, "("),
             Rparen => write!(f, ")"),
             LSquirly => write!(f, "{}", '{'),
-            RSquirly => write!(f, "{}" ,'}'),
+            RSquirly => write!(f, "{}", '}'),
             LBrack => write!(f, "["),
             RBrack => write!(f, "]"),
 

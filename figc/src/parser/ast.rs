@@ -420,6 +420,7 @@ pub enum Expression {
     Ref(RefValue),
     DeRef(DeRef),
     Object(ObjectExpr),
+    ObjectAccess(ObjectAccess),
 }
 
 impl<'a> Parse<'a> for Expression {
@@ -455,6 +456,11 @@ impl<'a> Parse<'a> for Expression {
                     )?))
                 } else if parser.next_token_is(Token::LSquirly) {
                     Ok(Expression::Object(ObjectExpr::parse(
+                        parser,
+                        precedence.clone(),
+                    )?))
+                } else if parser.next_token_is(Token::Period) {
+                    Ok(Expression::ObjectAccess(ObjectAccess::parse(
                         parser,
                         precedence.clone(),
                     )?))
@@ -873,9 +879,7 @@ impl<'a> Parse<'a> for ObjectFields {
             parser.next_token();
         }
 
-        Ok(Self {
-            fields,
-        })
+        Ok(Self { fields })
     }
 }
 
@@ -898,6 +902,58 @@ impl<'a> Parse<'a> for ObjectExpr {
         // Now return the object expression
         Ok(Self {
             name: object_name,
+            fields,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectAccessField {
+    pub(crate) field: String,
+    pub(crate) inner_field: Option<Box<ObjectAccessField>>,
+}
+
+impl<'a> Parse<'a> for ObjectAccessField {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        let field = Identifier::parse(parser, None)?;
+
+        if !parser.next_token_is(Token::Period) {
+            return Ok(Self {
+                field: field.value,
+                inner_field: None,
+            });
+        }
+
+        parser.expect_peek(Token::Period)?;
+        parser.next_token();
+
+        Ok(Self {
+            field: field.value,
+            inner_field: Some(Box::new(Self::parse(parser, None)?)),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectAccess {
+    pub(crate) variable: String,
+    pub(crate) fields: ObjectAccessField,
+}
+
+impl<'a> Parse<'a> for ObjectAccess {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        // Parse Identifier variable
+        let variable = Identifier::parse(parser, None)?;
+
+        parser.expect_peek(Token::Period)?;
+        parser.next_token();
+
+        // Now until there is a . (period) token parse it as access field
+        // for example: some_object.some_field.inner_field
+        let fields = ObjectAccessField::parse(parser, None)?;
+
+        Ok(Self {
+            variable: variable.value,
             fields,
         })
     }

@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
-    ops::Deref,
 };
 
 use wasm_encoder::{
@@ -16,8 +15,8 @@ use crate::{
         BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, CharExpr,
         ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
         FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
-        LoopStatement, ObjectExpr, PrefixExpr, Program, RefValue, ReturnStatement, SetStatement,
-        Statement, StringExpr, StructStatement,
+        LoopStatement, ObjectAccess, ObjectExpr, PrefixExpr, Program, RefValue, ReturnStatement,
+        SetStatement, Statement, StringExpr, StructStatement,
     },
     types::types::Type,
 };
@@ -373,7 +372,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
                     type_index,
                     "malloc".to_string(),
                     vec![],
-                    Some(Type::I32),
+                    Some(Type::Array(Box::new(Type::Char))),
                 );
 
                 ctx.code_ctx.add_local(ValType::I32);
@@ -437,11 +436,11 @@ impl IndexExpr {
         match variable {
             Type::Array(arr_type) => match *arr_type.clone() {
                 Type::Char => {
-                    offset.extend([Instruction::I32Load8U(MemArg {
+                    offset.push(Instruction::I32Load8U(MemArg {
                         offset: 0,
                         align: 0,
                         memory_index: 0,
-                    })]);
+                    }));
                 }
                 _ => {
                     offset.push(Instruction::I32Load(MemArg {
@@ -601,6 +600,7 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Index(index_expr) => Ok(index_expr.get_instruction(ctx)?),
             Expression::Ref(ref_expr) => Ok(ref_expr.generate_instructions(ctx)?),
             Expression::Object(obj_expr) => Ok(obj_expr.generate_instructions(ctx)?),
+            Expression::ObjectAccess(obj_access) => Ok(obj_access.generate_instructions(ctx)?),
 
             x => panic!("{:?}", x),
         }
@@ -642,6 +642,13 @@ impl<'a> Instructions<'a> for LetStatement {
         } else {
             ctx.type_ctx.active_type.clone()
         };
+
+        if let_type != ctx.type_ctx.active_type {
+            return Err(CompilerError::Type(format!(
+                "The let type {:?} is not equal to value type {:?}",
+                let_type, ctx.type_ctx.active_type
+            )));
+        }
 
         let local_index = ctx
             .local_ctx
@@ -686,6 +693,7 @@ impl<'a> Instructions<'a> for ConstStatement {
 impl<'a> Instructions<'a> for StructStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         // TODO: Too much .clone()
+        let mut field_index = 0;
         ctx.type_ctx.new_struct(
             self.name.value.clone(),
             Structure {
@@ -695,7 +703,11 @@ impl<'a> Instructions<'a> for StructStatement {
                     .fields
                     .clone()
                     .into_iter()
-                    .map(|(name, ty)| (name.value, ty))
+                    .map(|(name, ty)| {
+                        let res = (name.value, (field_index, ty));
+                        field_index += 1;
+                        res
+                    })
                     .collect(),
             },
         );
@@ -763,6 +775,75 @@ impl<'a> Instructions<'a> for ObjectExpr {
         result.push(Instruction::I32Const(ptr));
 
         Ok(result.clone())
+    }
+}
+
+impl<'a> Instructions<'a> for ObjectAccess {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        // Get the variable
+        let Some(var_type) = ctx.local_ctx.get_local_type(&self.variable) else {
+            return Err(CompilerError::NotDefined(format!(
+                "Variable with name {} is not defined!",
+                &self.variable
+            )));
+        };
+
+        let Some(var_index) = ctx.local_ctx.get_local_index(&self.variable) else {
+            return Err(CompilerError::NotDefined(format!(
+                "Variable with name {} is not defined!",
+                self.variable
+            )));
+        };
+
+        let mut result = vec![];
+
+        match var_type {
+            Type::Custom(struct_name) => {
+                let Some(structure) = ctx.type_ctx.get_struct(struct_name) else {
+                    return Err(CompilerError::NotDefined(format!(
+                        "Structure with name {} is not defined!",
+                        &self.variable
+                    )));
+                };
+
+                let fields = self.fields.clone();
+                let mut next_field = Some(Box::new(self.fields.clone()));
+                let mut ty = ctx.type_ctx.active_type.clone();
+
+                while let Some(field) = next_field.clone() {
+                    let Some(structure_field) = structure.fields.get(&fields.field) else {
+                        return Err(CompilerError::NotDefined(format!(
+                            "{} structure does't have field named {}!",
+                            structure.name, field.field
+                        )));
+                    };
+
+                    ty = structure_field.1.clone();
+
+                    // Now get the property ( by index )
+                    result.push(Instruction::LocalGet(var_index.clone()));
+                    result.push(Instruction::I32Const(structure_field.0));
+                    result.push(Instruction::I32Add);
+                    result.push(Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }));
+
+                    next_field = field.inner_field.clone();
+                }
+
+                ctx.type_ctx.set_active_type(ty);
+            }
+
+            _ => {
+                return Err(CompilerError::NotSupported(
+                    "You can't access field of non object type!".to_string(),
+                ));
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -877,7 +958,7 @@ impl<'a> Instructions<'a> for Statement {
                 ctx.local_ctx.exit_active_local();
                 ctx.local_ctx.already_set(false);
 
-                return let_statement;
+                let_statement
             }
             Statement::Return(ret) => ret.generate_instructions(ctx),
             Statement::Export(export) => export.generate_instructions(ctx),
@@ -1035,8 +1116,8 @@ impl Context {
 #[derive(Clone)]
 pub struct Structure {
     name: String,
-    // (Name, type)
-    fields: HashMap<String, Type>,
+    // (Name, (index, type))
+    fields: HashMap<String, (i32, Type)>,
 }
 
 impl Structure {
