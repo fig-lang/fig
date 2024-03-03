@@ -6,10 +6,10 @@ external io {
     fn read_file(path: char[]): char[];
 }
 
-builtin fn malloc(size: i32): i32;
+builtin fn malloc(size: i32): char[];
 
 fn len(str_ptr: char[]): i32 {
-    let length: i32 = 0;
+    let length = 0;
 
     loop {
         if (str_ptr[length] == 0) { break; };
@@ -20,10 +20,10 @@ fn len(str_ptr: char[]): i32 {
     return length;
 }
 
-fn copy_str(str: char[]): i32 {
-    let i: i32 = 0;
-    let length: i32 = len(str);
-    let new_str: i32[] = malloc(length + 1);
+fn copy_str(str: char[]): char[] {
+    let i = 0;
+    let length = len(str);
+    let new_str: char[] = malloc(length + 1);
 
     loop {
         if (i == length) { break; };
@@ -37,7 +37,7 @@ fn copy_str(str: char[]): i32 {
 }
 
 fn cmp_string(lhs: char[], rhs: char[]): bool {
-    let i: i32 = 0;
+    let i = 0;
 
     loop {
         if (lhs[i] == 0) { break; }
@@ -54,11 +54,11 @@ fn cmp_string(lhs: char[], rhs: char[]): bool {
 }
 
 fn add_string(lhs: char[], rhs: char[]): char[] {
-    let lhs_length: i32 = len(lhs);
-    let rhs_length: i32 = len(rhs);
+    let lhs_length = len(lhs);
+    let rhs_length = len(rhs);
 
     let new_str: char[] = malloc(lhs_length + rhs_length);
-    let i: i32 = 0;
+    let i = 0;
 
     loop {
         if (i == lhs_length) { break; };
@@ -68,7 +68,7 @@ fn add_string(lhs: char[], rhs: char[]): char[] {
         i = i + 1;
     }
 
-    let y: i32 = 0;
+    let y = 0;
 
     loop {
         if (y == rhs_length) { break; };
