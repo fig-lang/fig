@@ -25,10 +25,6 @@ impl<'a> Parse<'a> for Type {
 
         let type_value = Type::from(type_ident.clone());
 
-        if type_value == Type::NotDefined {
-            return Err(ParserError::unexpected(type_ident, parser.current_line()));
-        }
-
         Ok(type_value)
     }
 }
@@ -877,7 +873,9 @@ impl<'a> Parse<'a> for ObjectFields {
             parser.next_token();
         }
 
-        Ok(Self { fields })
+        Ok(Self {
+            fields,
+        })
     }
 }
 

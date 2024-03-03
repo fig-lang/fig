@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
+    ops::Deref,
 };
 
 use wasm_encoder::{
@@ -15,8 +16,8 @@ use crate::{
         BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, CharExpr,
         ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
         FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
-        LoopStatement, PrefixExpr, Program, RefValue, ReturnStatement, SetStatement, Statement,
-        StringExpr, StructStatement,
+        LoopStatement, ObjectExpr, PrefixExpr, Program, RefValue, ReturnStatement, SetStatement,
+        Statement, StringExpr, StructStatement,
     },
     types::types::Type,
 };
@@ -134,7 +135,7 @@ impl StringExpr {
 
         let ptr = ctx
             .memory_ctx
-            .alloc(size as i32, string.as_bytes().to_vec());
+            .alloc_data(size as i32, string.as_bytes().to_vec());
 
         ptr
     }
@@ -279,7 +280,7 @@ impl<'a> Instructions<'a> for PrefixExpr {
                 result.push(Instruction::F32Neg);
             }
 
-            _ => panic!("Just - is operation allowed"),
+            _ => panic!("Just - operation allowed"),
         }
 
         Ok(result)
@@ -599,6 +600,7 @@ impl<'a> Instructions<'a> for Expression {
 
             Expression::Index(index_expr) => Ok(index_expr.get_instruction(ctx)?),
             Expression::Ref(ref_expr) => Ok(ref_expr.generate_instructions(ctx)?),
+            Expression::Object(obj_expr) => Ok(obj_expr.generate_instructions(ctx)?),
 
             x => panic!("{:?}", x),
         }
@@ -681,10 +683,86 @@ impl<'a> Instructions<'a> for ConstStatement {
     }
 }
 
-impl<'a> StructStatement {
-    fn init(&self, ctx: &'a mut Context) -> CResult<()> {
-        // TODO
-        todo!()
+impl<'a> Instructions<'a> for StructStatement {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        // TODO: Too much .clone()
+        ctx.type_ctx.new_struct(
+            self.name.value.clone(),
+            Structure {
+                name: self.name.value.clone(),
+                fields: self
+                    .fields
+                    .fields
+                    .clone()
+                    .into_iter()
+                    .map(|(name, ty)| (name.value, ty))
+                    .collect(),
+            },
+        );
+
+        Ok(vec![])
+    }
+}
+
+impl ObjectExpr {
+    pub fn allocate(&self, ctx: &mut Context, size: i32) -> i32 {
+        let size = size + 1;
+
+        let current_mem_offset = ctx.memory_ctx.offset;
+        ctx.global_ctx.set_global(
+            "mem_offset",
+            ConstExpr::i32_const(current_mem_offset + size as i32),
+        );
+
+        ctx.memory_ctx.alloc(size);
+
+        current_mem_offset
+    }
+}
+
+impl<'a> Instructions<'a> for ObjectExpr {
+    // check if struct exists, and allocate memory for the struct init
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        // Try to get struct
+        let Some(structure) = ctx.type_ctx.get_struct(&self.name.value).cloned() else {
+            return Err(CompilerError::not_defined(
+                "struct",
+                self.name.value.as_str(),
+                0,
+            ));
+        };
+
+        ctx.type_ctx.set_active_type(Type::Custom(structure.name));
+
+        let ptr = self.allocate(ctx, structure.fields.clone().len() as i32);
+
+        // Check if fields exists
+        // and execute the value and put it in memory
+        let mut i = 0;
+        let mut result: Vec<Instruction> = vec![];
+        for (field_name, value) in &self.fields.fields {
+            if structure.fields.get(&field_name.value) == None {
+                return Err(CompilerError::not_defined(
+                    "sturct field",
+                    field_name.value.as_str(),
+                    0,
+                ));
+            }
+
+            result.push(Instruction::I32Const(ptr + i));
+            result.extend(value.generate_instructions(ctx)?);
+            result.push(Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }));
+
+            i += 1;
+        }
+
+        result.push(Instruction::I32Const(ptr));
+
+        Ok(result.clone())
     }
 }
 
@@ -809,7 +887,7 @@ impl<'a> Instructions<'a> for Statement {
             Statement::External(external) => external.generate_instructions(ctx),
             Statement::Builtin(builtin) => builtin.generate_instructions(ctx),
             Statement::Const(cnst) => cnst.generate_instructions(ctx),
-            //Statement::Struct(strct) => strct.init(ctx),
+            Statement::Struct(strct) => strct.generate_instructions(ctx),
             _ => todo!(),
         }
     }
@@ -847,7 +925,7 @@ pub struct Context {
     /// Collected Errors when compiling
     pub(crate) errors: Vec<CompilerError>,
 
-    /// Manages types like function types
+    /// Manages types like function types, or structs
     pub(crate) type_ctx: TypeContext,
 
     /// Manages functions
@@ -913,8 +991,11 @@ impl Context {
     /// Bootstraps the default variables
     /// like memory offset
     pub fn bootstrap(&mut self) {
-        self.global_ctx
-            .add_global_int("mem_offset", ConstExpr::i32_const(self.memory_offset), true);
+        self.global_ctx.add_global_int(
+            "mem_offset",
+            ConstExpr::i32_const(self.memory_offset),
+            true,
+        );
     }
 
     /// Returns the errors
@@ -950,11 +1031,27 @@ impl Context {
     }
 }
 
+/// Fig Structure type
+#[derive(Clone)]
+pub struct Structure {
+    name: String,
+    // (Name, type)
+    fields: HashMap<String, Type>,
+}
+
+impl Structure {
+    // TODO: this not works correctly
+    pub fn length_width(&self) -> usize {
+        self.fields.len()
+    }
+}
+
 // TODO: create use function_type method
 pub struct TypeContext {
     section: TypeSection,
     types_index: u32,
     active_type: Type,
+    structs: HashMap<String, Structure>,
 }
 
 impl TypeContext {
@@ -963,6 +1060,7 @@ impl TypeContext {
             section: TypeSection::new(),
             types_index: 0,
             active_type: Type::I32,
+            structs: HashMap::new(),
         }
     }
 
@@ -986,6 +1084,14 @@ impl TypeContext {
 
     pub fn set_active_type(&mut self, new_active_ty: Type) {
         self.active_type = new_active_ty;
+    }
+
+    pub fn new_struct(&mut self, name: String, structure: Structure) {
+        self.structs.insert(name, structure);
+    }
+
+    pub fn get_struct(&self, name: &String) -> Option<&Structure> {
+        self.structs.get(name)
     }
 }
 
@@ -1225,7 +1331,7 @@ impl MemoryContext {
     }
 
     /// Returns pointer to the data
-    pub fn alloc<D>(&mut self, size: i32, data: D) -> i32
+    pub fn alloc_data<D>(&mut self, size: i32, data: D) -> i32
     where
         D: IntoIterator<Item = u8>,
         D::IntoIter: ExactSizeIterator,
@@ -1235,6 +1341,14 @@ impl MemoryContext {
         let offset = ConstExpr::i32_const(ptr);
 
         self.data_section.active(0, &offset, data);
+
+        self.offset += size;
+
+        ptr
+    }
+
+    pub fn alloc(&mut self, size: i32) -> i32 {
+        let ptr = self.offset;
 
         self.offset += size;
 

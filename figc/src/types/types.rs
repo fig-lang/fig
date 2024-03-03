@@ -14,9 +14,9 @@ pub enum Type {
 
     Bool,
 
-    NotDefined,
-
     Array(Box<Type>),
+
+    Custom(String),
 }
 
 impl From<String> for Type {
@@ -37,7 +37,7 @@ impl From<String> for Type {
             "f64" => Self::F64,
             "char" => Self::Char,
             "bool" => Self::Bool,
-            _ => Self::NotDefined,
+            other => Self::Custom(other.to_string()),
         }
     }
 }
@@ -62,9 +62,8 @@ impl TryInto<ValType> for Type {
 
             Self::Array(_) => Ok(ValType::I32),
 
-            _t => Err(CompilerError::NotDefined(
-                "type is not supported".to_string(),
-            )),
+            // TODO: is this ok ?
+            Self::Custom(_) => Ok(ValType::I32),
         }
     }
 }
