@@ -12,11 +12,11 @@ use wasm_encoder::{
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr, CharExpr,
-        ConstStatement, ExportStatement, Expression, ExternalStatement, FunctionMeta,
-        FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer, LetStatement,
-        LoopStatement, ObjectAccess, ObjectExpr, PrefixExpr, Program, RefValue, ReturnStatement,
-        SetStatement, Statement, StringExpr, StructStatement,
+        ArrayExpr, BlockStatement, BooleanExpr, BreakStatement, BuiltinStatement, CallExpr,
+        CharExpr, ConstStatement, DeRef, ExportStatement, Expression, ExternalStatement,
+        FunctionMeta, FunctionStatement, Identifier, IfExpr, IndexExpr, InfixExpr, Integer,
+        LetStatement, LoopStatement, ObjectAccess, ObjectExpr, PrefixExpr, Program, RefValue,
+        ReturnStatement, SetStatement, Statement, StringExpr, StructStatement,
     },
     types::types::Type,
 };
@@ -144,6 +144,8 @@ impl<'a> Instructions<'a> for StringExpr {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let ptr = self.allocate(ctx);
 
+        ctx.type_ctx.set_active_type(Type::Array(Box::new(Type::Char)));
+
         Ok(vec![Instruction::I32Const(ptr)])
     }
 }
@@ -173,6 +175,44 @@ impl<'a> Instructions<'a> for RefValue {
 
             _ => panic!(),
         }
+    }
+}
+
+impl<'a> Instructions<'a> for DeRef {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let mut result = vec![];
+
+        result.extend(self.value.generate_instructions(ctx)?);
+
+        match ctx.type_ctx.active_type.clone() {
+            Type::Array(arr_type) => match *arr_type.clone() {
+                Type::Char | Type::I8 => {
+                    result.push(Instruction::I32Load8S(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }));
+                }
+
+                _ => {
+                    result.push(Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }));
+                }
+            },
+
+            _ => {
+                result.push(Instruction::I32Load(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+            }
+        };
+
+        Ok(result)
     }
 }
 
@@ -296,9 +336,10 @@ impl<'a> Instructions<'a> for InfixExpr {
         let right_side_type = ctx.type_ctx.active_type.clone();
 
         if left_side_type != right_side_type {
-            return Err(CompilerError::Type(
-                "Left hand side is not equal to right hand side.".to_string(),
-            ));
+            return Err(CompilerError::Type(format!(
+                "Left hand side {:?} is not equal to right hand side {:?}.",
+                left_side_type, right_side_type
+            )));
         }
 
         result.extend(left_side);
@@ -433,10 +474,12 @@ impl IndexExpr {
         // Get the variable type
         let variable = ctx.local_ctx.get_local_type(&self.variable.value).unwrap();
 
+        ctx.type_ctx.set_active_type(variable.clone());
+
         match variable {
             Type::Array(arr_type) => match *arr_type.clone() {
-                Type::Char => {
-                    offset.push(Instruction::I32Load8U(MemArg {
+                Type::Char | Type::I8 => {
+                    offset.push(Instruction::I32Load8S(MemArg {
                         offset: 0,
                         align: 0,
                         memory_index: 0,
@@ -488,12 +531,20 @@ impl IndexExpr {
 }
 
 impl<'a> Instructions<'a> for IndexExpr {
-    fn generate_instructions(&self, _ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        Ok(vec![Instruction::I32Store8(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        })])
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        Ok(vec![match ctx.type_ctx.active_type.clone() {
+            Type::I8 | Type::Char => Instruction::I32Store8(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }),
+
+            _ => Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }),
+        }])
     }
 }
 
@@ -596,13 +647,12 @@ impl<'a> Instructions<'a> for Expression {
             Expression::Char(c) => Ok(c.generate_instructions(ctx)?),
             Expression::If(if_expr) => Ok(if_expr.generate_instructions(ctx)?),
             Expression::Boolean(bool_expr) => Ok(bool_expr.generate_instructions(ctx)?),
-
             Expression::Index(index_expr) => Ok(index_expr.get_instruction(ctx)?),
             Expression::Ref(ref_expr) => Ok(ref_expr.generate_instructions(ctx)?),
+            Expression::DeRef(deref_expr) => Ok(deref_expr.generate_instructions(ctx)?),
             Expression::Object(obj_expr) => Ok(obj_expr.generate_instructions(ctx)?),
             Expression::ObjectAccess(obj_access) => Ok(obj_access.generate_instructions(ctx)?),
-
-            x => panic!("{:?}", x),
+            Expression::Array(array_expr) => Ok(array_expr.generate_instructions(ctx)?),
         }
     }
 }
@@ -612,10 +662,20 @@ impl<'a> Instructions<'a> for Identifier {
         let local_id = ctx.local_ctx.get_local_index(&self.value);
 
         match local_id {
-            Some(id) => Ok(vec![Instruction::LocalGet(id.clone())]),
+            Some(id) => {
+                //ctx.type_ctx
+                //    .set_active_type(ctx.local_ctx.get_local_type(&self.value).unwrap().clone());
+                Ok(vec![Instruction::LocalGet(id.clone())])
+            }
 
             None => match ctx.global_ctx.get_global(&self.value) {
-                Some(glob) => Ok(vec![Instruction::GlobalGet(glob.0.clone())]),
+                Some(glob) => {
+                    // TODO
+                    //                ctx.type_ctx
+                    //                    .set_active_type(ctx.local_ctx.get_local_type(&self.value).unwrap().clone());
+                    //
+                    Ok(vec![Instruction::GlobalGet(glob.0.clone())])
+                }
                 None => Err(CompilerError::NotDefined(format!(
                     "Variable with name {} is not defined!",
                     self.value
@@ -643,12 +703,12 @@ impl<'a> Instructions<'a> for LetStatement {
             ctx.type_ctx.active_type.clone()
         };
 
-        if let_type != ctx.type_ctx.active_type {
-            return Err(CompilerError::Type(format!(
-                "The let type {:?} is not equal to value type {:?}",
-                let_type, ctx.type_ctx.active_type
-            )));
-        }
+        //if let_type != ctx.type_ctx.active_type {
+        //    return Err(CompilerError::Type(format!(
+        //        "The let type {:?} is not equal to value type {:?}",
+        //        let_type, ctx.type_ctx.active_type
+        //    )));
+        //}
 
         let local_index = ctx
             .local_ctx
@@ -842,6 +902,52 @@ impl<'a> Instructions<'a> for ObjectAccess {
                 ));
             }
         }
+
+        Ok(result)
+    }
+}
+
+impl ArrayExpr {
+    pub fn allocate(&self, ctx: &mut Context, size: i32) -> i32 {
+        let size = size + 1;
+
+        let current_mem_offset = ctx.memory_ctx.offset;
+        ctx.global_ctx.set_global(
+            "mem_offset",
+            ConstExpr::i32_const(current_mem_offset + size as i32),
+        );
+
+        ctx.memory_ctx.alloc(size);
+
+        current_mem_offset
+    }
+}
+
+impl<'a> Instructions<'a> for ArrayExpr {
+    fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
+        let ptr = self.allocate(ctx, self.items.clone().len() as i32);
+
+        let mut i = 0;
+        let mut result: Vec<Instruction> = vec![];
+
+        //let mut first_item_type: Option<Type> = None;
+
+        for item in &self.items {
+            result.push(Instruction::I32Const(ptr + i));
+            result.extend(item.generate_instructions(ctx)?);
+            result.push(Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }));
+
+            i += 1;
+        }
+
+        ctx.type_ctx
+            .set_active_type(Type::Array(Box::new(ctx.type_ctx.active_type.clone())));
+
+        result.push(Instruction::I32Const(ptr));
 
         Ok(result)
     }

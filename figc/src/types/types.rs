@@ -4,6 +4,8 @@ use crate::codegen::codegen::CompilerError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    I8,
+
     I32,
     I64,
 
@@ -31,6 +33,7 @@ impl From<String> for Type {
         }
 
         match value.as_str() {
+            "i8" => Self::I8,
             "i32" => Self::I32,
             "i64" => Self::I64,
             "f32" => Self::F32,
@@ -47,6 +50,7 @@ impl TryInto<ValType> for Type {
 
     fn try_into(self) -> Result<ValType, Self::Error> {
         match self {
+            Self::I8 => Ok(ValType::I32),
             Self::I32 => Ok(ValType::I32),
             Self::I64 => Ok(ValType::I64),
             Self::F32 => Ok(ValType::F32),

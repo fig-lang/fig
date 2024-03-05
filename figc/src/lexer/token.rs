@@ -83,7 +83,7 @@ impl Display for Token {
             Lparen => write!(f, "("),
             Rparen => write!(f, ")"),
             LSquirly => write!(f, "{}", '{'),
-            RSquirly => write!(f, "{}", '}'),
+            RSquirly => write!(f, "{}" ,'}'),
             LBrack => write!(f, "["),
             RBrack => write!(f, "]"),
 

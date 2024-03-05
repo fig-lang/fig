@@ -421,6 +421,7 @@ pub enum Expression {
     DeRef(DeRef),
     Object(ObjectExpr),
     ObjectAccess(ObjectAccess),
+    Array(ArrayExpr),
 }
 
 impl<'a> Parse<'a> for Expression {
@@ -440,6 +441,11 @@ impl<'a> Parse<'a> for Expression {
             // BUG: Determine the *pointer with 1 * x
             // Or maybe we can use deref kind of keyword
             Token::Asterisk => Ok(Expression::DeRef(DeRef::parse(parser, precedence.clone())?)),
+
+            Token::LBrack => Ok(Expression::Array(ArrayExpr::parse(
+                parser,
+                precedence.clone(),
+            )?)),
 
             Token::Ident(ident) => {
                 if parser.next_token_is(Token::LBrack) {
@@ -604,7 +610,7 @@ impl<'a> Parse<'a> for RefValue {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeRef {
-    pub(crate) ident: Identifier,
+    pub(crate) value: Box<Expression>,
 }
 
 impl<'a> Parse<'a> for DeRef {
@@ -612,10 +618,11 @@ impl<'a> Parse<'a> for DeRef {
         // Skip the * char
         parser.next_token();
 
-        // now parse the ref type
-        let ident = Identifier::parse(parser, precedence)?;
+        let value = Expression::parse(parser, precedence)?;
 
-        Ok(Self { ident })
+        Ok(Self {
+            value: Box::new(value),
+        })
     }
 }
 
@@ -904,6 +911,38 @@ impl<'a> Parse<'a> for ObjectExpr {
             name: object_name,
             fields,
         })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayExpr {
+    pub(crate) items: Vec<Expression>,
+}
+
+impl<'a> Parse<'a> for ArrayExpr {
+    fn parse(parser: &mut Parser<'a>, _precedence: Option<Precedence>) -> PResult<Self> {
+        let mut items: Vec<Expression> = vec![];
+
+        if parser.next_token_is(Token::RBrack) {
+            parser.next_token();
+
+            return Ok(Self { items });
+        }
+
+        parser.next_token();
+
+        items.push(Expression::parse(parser, None)?);
+
+        while parser.next_token_is(Token::Comma) {
+            parser.next_token();
+            parser.next_token();
+
+            items.push(Expression::parse(parser, None)?);
+        }
+
+        parser.expect_peek(Token::RBrack)?;
+
+        Ok(Self { items })
     }
 }
 
