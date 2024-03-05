@@ -6,7 +6,7 @@ external io {
     fn read_file(path: char[]): char[];
 }
 
-builtin fn malloc(size: i32): char[];
+builtin fn malloc(size: i32): i32[];
 
 fn len(str_ptr: char[]): i32 {
     let length = 0;
@@ -23,7 +23,7 @@ fn len(str_ptr: char[]): i32 {
 fn copy_str(str: char[]): char[] {
     let i = 0;
     let length = len(str);
-    let new_str: char[] = malloc(length + 1);
+    let new_str = malloc(length + 1);
 
     loop {
         if (i == length) { break; };
