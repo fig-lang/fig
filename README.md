@@ -33,7 +33,7 @@ To run this simple fig program run `fig run ./{file name}`
 
 Also, you can test out fig files in `examples` folder.
 
-# Learn Fig
+## Learn Fig
 Fig has a [book](https://fig-lang.github.io/book/docs/Fig%20introduction) for learning the syntax and basic principles of fig.
 
 ## Server-side
