@@ -33,6 +33,9 @@ To run this simple fig program run `fig run ./{file name}`
 
 Also, you can test out fig files in `examples` folder.
 
+# Learn Fig
+Fig has a [book](https://fig-lang.github.io/book/docs/Fig%20introduction) for learning the syntax and basic principles of fig.
+
 ## Server-side
 You can write server-side applications with FigLang, FigCli has a command called `server` That will listen to the address and port you specified,
 each time a request arrives the CLI will run the script and pass the HTTP request content to the main function.
