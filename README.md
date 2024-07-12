@@ -19,7 +19,7 @@ curl https://raw.githubusercontent.com/fig-lang/fig/main/install.sh | bash
 **This installation script currently doesn't support `zsh`**
 
 ## Hello World in Fig
-```
+```fig
 import std;
 
 export fn main() {
