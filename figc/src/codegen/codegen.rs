@@ -144,7 +144,8 @@ impl<'a> Instructions<'a> for StringExpr {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let ptr = self.allocate(ctx);
 
-        ctx.type_ctx.set_active_type(Type::Array(Box::new(Type::Char)));
+        ctx.type_ctx
+            .set_active_type(Type::Array(Box::new(Type::Char)));
 
         Ok(vec![Instruction::I32Const(ptr)])
     }
@@ -404,6 +405,25 @@ impl<'a> Instructions<'a> for ExternalStatement {
 impl<'a> Instructions<'a> for BuiltinStatement {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         match self.function_meta.name.value.as_str() {
+            "salloc" => {
+                let type_index = ctx
+                    .type_ctx
+                    .new_function_type(vec![ValType::I32], vec![ValType::I32]);
+
+                ctx.function_ctx.new_function(
+                    type_index,
+                    "salloc".to_string(),
+                    vec![],
+                    Some(Type::Array(Box::new(Type::Char))),
+                );
+
+                ctx.code_ctx.add_local(ValType::I32);
+                ctx.code_ctx.new_function_code(malloc(), "salloc".into());
+
+                // TODO: Add this to export generate_instructions functions
+                ctx.export_ctx
+                    .export_function(&"salloc".to_owned(), type_index);
+            }
             "malloc" => {
                 let type_index = ctx
                     .type_ctx
@@ -413,7 +433,7 @@ impl<'a> Instructions<'a> for BuiltinStatement {
                     type_index,
                     "malloc".to_string(),
                     vec![],
-                    Some(Type::Array(Box::new(Type::Char))),
+                    Some(Type::Array(Box::new(Type::I32))),
                 );
 
                 ctx.code_ctx.add_local(ValType::I32);
@@ -571,6 +591,82 @@ impl<'a> Instructions<'a> for SetStatement {
                 result.extend(expression);
 
                 result.push(Instruction::LocalSet(var_id.to_owned()));
+            }
+
+            // TODO: this does't works
+            Expression::ObjectAccess(acc) => {
+                // Get the variable
+                let Some(var_type) = ctx.local_ctx.get_local_type(&acc.variable) else {
+                    return Err(CompilerError::NotDefined(format!(
+                        "Variable with name {} is not defined!",
+                        &acc.variable
+                    )));
+                };
+
+                let Some(var_index) = ctx.local_ctx.get_local_index(&acc.variable) else {
+                    return Err(CompilerError::NotDefined(format!(
+                        "Variable with name {} is not defined!",
+                        acc.variable
+                    )));
+                };
+
+                match var_type {
+                    Type::Custom(struct_name) => {
+                        let Some(structure) = ctx.type_ctx.get_struct(struct_name) else {
+                            return Err(CompilerError::NotDefined(format!(
+                                "Structure with name {} is not defined!",
+                                &acc.variable
+                            )));
+                        };
+
+                        let fields = acc.fields.clone();
+                        let mut next_field = Some(Box::new(acc.fields.clone()));
+                        let mut ty = ctx.type_ctx.active_type.clone();
+
+                        while let Some(field) = next_field.clone() {
+                            let Some(structure_field) = structure.fields.get(&fields.field) else {
+                                return Err(CompilerError::NotDefined(format!(
+                                    "{} structure does't have field named {}!",
+                                    structure.name, field.field
+                                )));
+                            };
+
+                            ty = structure_field.1.clone();
+
+                            // Now get the property ( by index )
+                            result.push(Instruction::LocalGet(var_index.clone()));
+                            result.push(Instruction::I32Const(structure_field.0));
+                            result.push(Instruction::I32Add);
+
+                            next_field = field.inner_field.clone();
+
+                            if next_field.is_some() {
+                                result.push(Instruction::I32Load(MemArg {
+                                    offset: 0,
+                                    align: 0,
+                                    memory_index: 0,
+                                }));
+                            }
+                        }
+
+                        result.extend(expression);
+
+                        result.push(Instruction::I32Store(MemArg {
+                            offset: 0,
+                            align: 0,
+                            memory_index: 0,
+                        }));
+
+                        ctx.type_ctx.set_active_type(ty);
+                    }
+
+                    t => {
+                        return Err(CompilerError::NotSupported(format!(
+                            "You can't access field of non object type! {:?}",
+                            t
+                        )));
+                    }
+                }
             }
 
             _ => unreachable!(),
@@ -778,8 +874,6 @@ impl<'a> Instructions<'a> for StructStatement {
 
 impl ObjectExpr {
     pub fn allocate(&self, ctx: &mut Context, size: i32) -> i32 {
-        let size = size + 1;
-
         let current_mem_offset = ctx.memory_ctx.offset;
         ctx.global_ctx.set_global(
             "mem_offset",
@@ -909,8 +1003,6 @@ impl<'a> Instructions<'a> for ObjectAccess {
 
 impl ArrayExpr {
     pub fn allocate(&self, ctx: &mut Context, size: i32) -> i32 {
-        let size = size + 1;
-
         let current_mem_offset = ctx.memory_ctx.offset;
         ctx.global_ctx.set_global(
             "mem_offset",

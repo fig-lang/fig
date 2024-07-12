@@ -1,3 +1,25 @@
+// MIT License
+// 
+// Copyright (c) 2024 The Fig Programming Language
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 use super::parser::{PResult, Parse, Parser, ParserError, Precedence};
 use crate::lexer::token::Token;
 use crate::types::types::Type;
@@ -80,7 +102,10 @@ impl<'a> Parse<'a> for Statement {
             Token::External => Ok(Self::External(ExternalStatement::parse(parser, None)?)),
             Token::Builtin => Ok(Self::Builtin(BuiltinStatement::parse(parser, None)?)),
             Token::Ident(_) => {
-                if parser.next_token_is(Token::Assign) || parser.next_token_is(Token::LBrack) {
+                if parser.next_token_is(Token::Assign)
+                    || parser.next_token_is(Token::LBrack)
+                    || parser.next_token_is(Token::Period)
+                {
                     Ok(Self::Set(SetStatement::parse(parser, precedence)?))
                 } else {
                     Self::parse_expression(parser, Some(Precedence::Lowest))
@@ -308,7 +333,10 @@ impl<'a> Parse<'a> for SetStatement {
         // the left_expr must be an identifier which is the variable name
         let variable = Expression::parse(parser, None)?;
 
-        if !(matches!(variable, Expression::Identifier(_) | Expression::Index(_))) {
+        if !(matches!(
+            variable,
+            Expression::Identifier(_) | Expression::Index(_) | Expression::ObjectAccess(_)
+        )) {
             return Err(ParserError::expected(
                 format!("variable name or index"),
                 format!("{:?}", variable),

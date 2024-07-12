@@ -18,3 +18,8 @@ pub fn free<'a>() -> Vec<Instruction<'a>> {
     vec![GlobalGet(0), LocalGet(0), I32Sub, GlobalSet(0), End]
 }
 
+pub fn copy<'a>() -> Vec<Instruction<'a>> {
+
+
+    vec![]
+}
