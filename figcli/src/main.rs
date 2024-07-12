@@ -4,6 +4,7 @@ use figc::lexer::lexer::Lexer;
 use figc::parser::ast::Program;
 use figc::parser::parser::Parser as FigParser;
 use figc::preprocessor::preprocessor::Preprocessor;
+use log::info;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufReader, Read, Write};
@@ -14,6 +15,7 @@ use wasmer::{
     imports, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, Module, Store, TypedFunction,
     Value, WasmPtr,
 };
+use wasmer_wasix::{generate_import_object_from_env, WasiEnv};
 use wasmprinter::print_bytes;
 
 #[derive(Parser, Debug)]
@@ -64,6 +66,8 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
     let mut parser = FigParser::new(&mut lexer);
     let program = Program::parse(&mut parser, None);
 
+    info!("{:?}", program);
+
     for error in program.get_errors() {
         println!("{}", error);
     }
@@ -78,6 +82,11 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
     preprocessor.add_module(
         "server".to_string(),
         include_str!("../../std/server.fig").to_string(),
+    );
+
+    preprocessor.add_module(
+        "wasi".to_string(),
+        include_str!("../../std/wasi.fig").to_string(),
     );
 
     let program = preprocessor.process();
@@ -125,6 +134,10 @@ fn fig_print_float(f: f32) {
     println!("{}", f);
 }
 
+fn fig_exit(code: i32) {
+    exit(code);
+}
+
 fn fig_read_file(mut env: FunctionEnvMut<Env>, addr: WasmPtr<u8>) -> i32 {
     let (env_data, mut store) = env.data_and_store_mut();
     let mut file_content: Vec<u8> = Vec::new();
@@ -167,6 +180,7 @@ fn run_wasm(bytes: &Vec<u8>) {
             alloc_func: None,
         },
     );
+
     let import_object = imports! {
         "io" => {
             "print_str" => Function::new_typed_with_env(&mut store, &env, fig_print),
@@ -174,14 +188,69 @@ fn run_wasm(bytes: &Vec<u8>) {
             "print_char" => Function::new_typed(&mut store, fig_print_char),
             "print_float" => Function::new_typed(&mut store,  fig_print_float),
             "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
+        },
+        "sys" => {
+            "exit" => Function::new_typed(&mut store, fig_exit),
         }
     };
 
-    let instance = Instance::new(&mut store, &module, &import_object).unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _guard = runtime.enter();
+
+    let wasi = WasiEnv::builder("wasm-app")
+        .imports(import_object.into_iter())
+        .arg("--verbose")
+        .build()
+        .unwrap();
+
+    let wasi_env = FunctionEnv::new(&mut store, wasi);
+    let wasi_imports = generate_import_object_from_env(
+        &mut store,
+        &wasi_env,
+        wasmer_wasix::WasiVersion::Snapshot0,
+    );
+
+    let instance = Instance::new(&mut store, &module, &wasi_imports).unwrap();
     let memory = instance.exports.get_memory("memory").unwrap().clone();
-    env.as_mut(&mut store).memory = Some(memory);
+
+    env.as_mut(&mut store).memory = Some(memory.clone());
     let main_fn = instance.exports.get_function("main").unwrap();
-    let _result = main_fn.call(&mut store, &[]).unwrap();
+    let result = main_fn.call(&mut store, &[]);
+    match result {
+        Ok(_) => {}
+        Err(e) => {
+            // Log the error
+            println!("Error caught from `main`: {}", e.message());
+
+            // Errors come with a trace we can inspect to get more
+            // information on the execution flow.
+            let frames = e.trace();
+            let frames_len = frames.len();
+
+            for i in 0..frames_len {
+                println!(
+                    "  Frame #{}: {:?}::{:?}",
+                    frames_len - i,
+                    frames[i].module_name(),
+                    frames[i].function_name().or(Some("<func>")).unwrap()
+                );
+            }
+        }
+    }
+
+    info!(
+        "Final Memory: {:?}",
+        memory
+            .view(&store)
+            .copy_to_vec()
+            .unwrap()
+            .into_iter()
+            .filter(|v| *v != 0)
+            .collect::<Vec<u8>>()
+    );
 }
 
 fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
@@ -202,6 +271,9 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
             "print_char" => Function::new_typed(&mut store, fig_print_char),
             "print_float" => Function::new_typed(&mut store,  fig_print_float),
             "read_file" => Function::new_typed_with_env(&mut store, &env, fig_read_file),
+        },
+        "sys" => {
+            "exit" => Function::new_typed(&mut store, fig_exit),
         }
     };
 
@@ -254,6 +326,8 @@ fn run_wasm_server<'a>(bytes: &Vec<u8>, addr: &'a str, mem_offset: i32) {
 }
 
 fn main() {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     match &cli.command {
