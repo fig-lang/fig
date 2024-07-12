@@ -6,7 +6,19 @@ external io {
     fn read_file(path: char[]): char[];
 }
 
+external sys {
+    fn exit(code: i32);
+}
+
 builtin fn malloc(size: i32): i32[];
+builtin fn salloc(size: i32): char[];
+
+fn panic(message: char[]) {
+    print_str("<PANIC>");
+    print_str(message);
+
+    exit(1);
+}
 
 fn len(str_ptr: char[]): i32 {
     let length = 0;
@@ -81,3 +93,62 @@ fn add_string(lhs: char[], rhs: char[]): char[] {
 
     return new_str;
 }
+
+fn assert_str(lhs: string, rhs: string) {
+    if (cmp_string(lhs, rhs) == false) {
+        panic(add_string(add_string("Left handside ", lhs), add_string(" is not equal to ", rhs)))
+    }
+}
+
+struct String {
+    len: i32,
+    capacity: i32,
+    chars: char[],
+}
+
+fn new_string(): String {
+    return String {
+        len: 0,
+        capacity: 0,
+        chars: [],
+    };
+}
+
+fn string_from_str(str: char[]): String {
+    return String {
+        len: len(str),
+        capacity: len(str) * 2,
+        // Copy the str just in case
+        chars: copy_str(str),
+    };
+}
+
+//fn string_push_char(s: String, c: char): String {
+//    let allocation = salloc(s.capacity);
+//
+//    let i: i32 = 0;
+//
+//    let chars_ptr: char[] = s.chars;
+//
+//    loop {
+//        if (i == len(s.chars)) { break; };
+//
+//        allocation[i] = chars_ptr[i];
+//
+//        i = i + 1;
+//    }
+//
+//    allocation[i] = char;
+//
+//    return String {
+//        chars: allocation,
+//        len: s.len + 1,
+//        capacity: s.capacity,
+//    };
+//}
+
+// 's: String -> s' is a pointer to String object
+fn print_string(s: String) {
+    print_str(s.chars);
+}
+
