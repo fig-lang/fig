@@ -84,11 +84,6 @@ fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
         include_str!("../../std/server.fig").to_string(),
     );
 
-    preprocessor.add_module(
-        "wasi".to_string(),
-        include_str!("../../std/wasi.fig").to_string(),
-    );
-
     let program = preprocessor.process();
 
     for error in program.get_errors() {
@@ -202,7 +197,6 @@ fn run_wasm(bytes: &Vec<u8>) {
 
     let wasi = WasiEnv::builder("wasm-app")
         .imports(import_object.into_iter())
-        .arg("--verbose")
         .build()
         .unwrap();
 
@@ -213,7 +207,7 @@ fn run_wasm(bytes: &Vec<u8>) {
         wasmer_wasix::WasiVersion::Snapshot0,
     );
 
-    let instance = Instance::new(&mut store, &module, &wasi_imports).unwrap();
+    let instance = Instance::new(&mut store, &module, &import_object).unwrap();
     let memory = instance.exports.get_memory("memory").unwrap().clone();
 
     env.as_mut(&mut store).memory = Some(memory.clone());
