@@ -1,3 +1,25 @@
+// MIT License
+//
+// Copyright (c) 2024 The Fig Programming Language
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
@@ -162,14 +184,14 @@ impl<'a> Instructions<'a> for RefValue {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         match self.value.as_ref() {
             Expression::Identifier(ident) => {
-                let Some(id) = ctx.local_ctx.get_local_index(&ident.value) else {
+                let Some(local) = ctx.local_ctx.get_local_index(&ident.value) else {
                     return Err(CompilerError::NotDefined(format!(
                         "Variable with name {} is not defined!",
                         &ident.value
                     )));
                 };
 
-                Ok(vec![Instruction::I32Const(*id as i32)])
+                Ok(vec![Instruction::LocalGet(local.index)])
             }
 
             Expression::Index(index) => Ok(index.get_offset(ctx)?),
@@ -542,7 +564,17 @@ impl IndexExpr {
         }
 
         // Is this good solution ?
-        result.push(Instruction::LocalGet(variable.clone()));
+        result.push(Instruction::LocalGet(variable.index));
+        result.push(Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        result.push(Instruction::I32Load(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
         result.extend(self.index.generate_instructions(ctx)?);
         result.push(Instruction::I32Add);
 
@@ -581,7 +613,7 @@ impl<'a> Instructions<'a> for SetStatement {
             }
 
             Expression::Identifier(ident) => {
-                let Some(var_id) = ctx.local_ctx.get_local_index(&ident.value) else {
+                let Some(local) = ctx.local_ctx.get_local_index(&ident.value) else {
                     return Err(CompilerError::NotDefined(format!(
                         "Variable with name {} is not defined!",
                         ident.value
@@ -590,7 +622,7 @@ impl<'a> Instructions<'a> for SetStatement {
 
                 result.extend(expression);
 
-                result.push(Instruction::LocalSet(var_id.to_owned()));
+                result.push(Instruction::LocalSet(local.index));
             }
 
             // TODO: this does't works
@@ -603,7 +635,7 @@ impl<'a> Instructions<'a> for SetStatement {
                     )));
                 };
 
-                let Some(var_index) = ctx.local_ctx.get_local_index(&acc.variable) else {
+                let Some(local) = ctx.local_ctx.get_local_index(&acc.variable) else {
                     return Err(CompilerError::NotDefined(format!(
                         "Variable with name {} is not defined!",
                         acc.variable
@@ -634,7 +666,7 @@ impl<'a> Instructions<'a> for SetStatement {
                             ty = structure_field.1.clone();
 
                             // Now get the property ( by index )
-                            result.push(Instruction::LocalGet(var_index.clone()));
+                            result.push(Instruction::LocalGet(local.index));
                             result.push(Instruction::I32Const(structure_field.0));
                             result.push(Instruction::I32Add);
 
@@ -755,13 +787,20 @@ impl<'a> Instructions<'a> for Expression {
 
 impl<'a> Instructions<'a> for Identifier {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
-        let local_id = ctx.local_ctx.get_local_index(&self.value);
+        let local = ctx.local_ctx.get_local_index(&self.value);
 
-        match local_id {
-            Some(id) => {
+        match local {
+            Some(local) => {
                 //ctx.type_ctx
                 //    .set_active_type(ctx.local_ctx.get_local_type(&self.value).unwrap().clone());
-                Ok(vec![Instruction::LocalGet(id.clone())])
+                Ok(vec![
+                    Instruction::LocalGet(local.index),
+                    Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 0,
+                        memory_index: 0,
+                    }),
+                ])
             }
 
             None => match ctx.global_ctx.get_global(&self.value) {
@@ -812,9 +851,22 @@ impl<'a> Instructions<'a> for LetStatement {
 
         ctx.local_ctx.set_active_local(local_index);
 
+        let current_mem_offset = ctx.memory_ctx.offset;
+        ctx.global_ctx
+            .set_global("mem_offset", ConstExpr::i32_const(current_mem_offset + 1));
+        ctx.memory_ctx.alloc(1);
+
+        result.push(Instruction::I32Const(current_mem_offset));
         result.extend(let_value);
 
-        // create new local
+        result.push(Instruction::I32Store(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+
+        result.push(Instruction::I32Const(current_mem_offset));
+
         ctx.code_ctx.add_local(let_type.try_into()?);
 
         if !ctx.local_ctx.get_already_set() {
@@ -942,7 +994,7 @@ impl<'a> Instructions<'a> for ObjectAccess {
             )));
         };
 
-        let Some(var_index) = ctx.local_ctx.get_local_index(&self.variable) else {
+        let Some(local) = ctx.local_ctx.get_local_index(&self.variable) else {
             return Err(CompilerError::NotDefined(format!(
                 "Variable with name {} is not defined!",
                 self.variable
@@ -975,7 +1027,7 @@ impl<'a> Instructions<'a> for ObjectAccess {
                     ty = structure_field.1.clone();
 
                     // Now get the property ( by index )
-                    result.push(Instruction::LocalGet(var_index.clone()));
+                    result.push(Instruction::LocalGet(local.index));
                     result.push(Instruction::I32Const(structure_field.0));
                     result.push(Instruction::I32Add);
                     result.push(Instruction::I32Load(MemArg {
@@ -1496,6 +1548,11 @@ impl CodeContext {
         self.section.clone()
     }
 }
+
+pub struct Local {
+    pub(super) index: u32,
+}
+
 pub struct LocalContext {
     /// name, id
     ///
@@ -1503,7 +1560,7 @@ pub struct LocalContext {
     /// new entry in this hashmap with (let name, index)
     ///
     /// witch first let index is 0 second is 1 and so on
-    locals: HashMap<String, u32>,
+    locals: HashMap<String, Local>,
 
     locals_type: HashMap<String, Type>,
 
@@ -1539,7 +1596,7 @@ impl LocalContext {
     //    self.locals.contains_key(name)
     //}
 
-    pub fn get_local_index(&self, name: &String) -> Option<&u32> {
+    pub fn get_local_index(&self, name: &String) -> Option<&Local> {
         self.locals.get(name)
     }
 
@@ -1581,7 +1638,12 @@ impl LocalContext {
     pub fn new_local(&mut self, name: String, ty: Type) -> u32 {
         let index = self.locals_index;
 
-        self.locals.insert(name.clone(), self.locals_index.clone());
+        self.locals.insert(
+            name.clone(),
+            Local {
+                index: self.locals_index.clone(),
+            },
+        );
         self.locals_type.insert(name, ty);
 
         self.locals_index += 1;

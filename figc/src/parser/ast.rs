@@ -145,6 +145,7 @@ pub struct LetStatement {
     pub(crate) value_type: Option<Type>,
     pub(crate) name: Identifier,
     pub(crate) value: Expression,
+    pub(crate) stored_in_memory: bool,
 }
 
 impl<'a> Parse<'a> for ConstStatement {
@@ -204,6 +205,7 @@ impl<'a> Parse<'a> for LetStatement {
             value_type,
             name: ident,
             value: let_value,
+            stored_in_memory: false,
         })
     }
 }
