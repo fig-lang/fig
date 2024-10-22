@@ -1,24 +1,9 @@
-external io {
-    fn print_str(s: char[]);
-    fn print_char(c: char);
-    fn print_int(i: i32);
-    fn print_float(f: f32);
-    fn read_file(path: char[]): char[];
-}
-
-external sys {
-    fn exit(code: i32);
+external wasi_unstable {
+    fn fd_write(fd: i32, iovec: i32[], len: i32, written: i32): i32;
 }
 
 builtin fn malloc(size: i32): i32[];
 builtin fn salloc(size: i32): char[];
-
-fn panic(message: char[]) {
-    print_str("<PANIC>");
-    print_str(message);
-
-    exit(1);
-}
 
 fn len(str_ptr: char[]): i32 {
     let length = 0;
@@ -94,12 +79,6 @@ fn add_string(lhs: char[], rhs: char[]): char[] {
     return new_str;
 }
 
-fn assert_str(lhs: string, rhs: string) {
-    if (cmp_string(lhs, rhs) == false) {
-        panic(add_string(add_string("Left handside ", lhs), add_string(" is not equal to ", rhs)))
-    }
-}
-
 struct String {
     len: i32,
     capacity: i32,
@@ -123,32 +102,18 @@ fn string_from_str(str: char[]): String {
     };
 }
 
-//fn string_push_char(s: String, c: char): String {
-//    let allocation = salloc(s.capacity);
-//
-//    let i: i32 = 0;
-//
-//    let chars_ptr: char[] = s.chars;
-//
-//    loop {
-//        if (i == len(s.chars)) { break; };
-//
-//        allocation[i] = chars_ptr[i];
-//
-//        i = i + 1;
-//    }
-//
-//    allocation[i] = char;
-//
-//    return String {
-//        chars: allocation,
-//        len: s.len + 1,
-//        capacity: s.capacity,
-//    };
-//}
+// Wasi version of print
+fn print(input: char[]) {
+    let iovec = malloc(5);
+    iovec[0] = input;
+    iovec[4] = len(input) + 1;
+
+    let written = 0;
+
+    let _ = fd_write(1, iovec, 1, &written);
+}
 
 // 's: String -> s' is a pointer to String object
 fn print_string(s: String) {
-    print_str(s.chars);
+    print(s.chars);
 }
-

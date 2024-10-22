@@ -18,11 +18,14 @@ pub enum Type {
 
     Array(Box<Type>),
 
+    Ref(Box<Type>),
+
     Custom(String),
 }
 
 impl From<String> for Type {
     fn from(value: String) -> Self {
+        println!("bruh");
         let splited = value.split("[");
 
         if splited.clone().into_iter().count() >= 2 {
@@ -30,6 +33,13 @@ impl From<String> for Type {
             let ty = Type::from(splited.into_iter().nth(0).unwrap().to_string());
 
             return Self::Array(Box::from(ty));
+        }
+
+        // Refrence check
+        if value.chars().into_iter().nth(0).unwrap() == '&' {
+            let ty = Type::from(value.chars().into_iter().take(1).collect::<String>());
+
+            return Self::Ref(Box::from(ty));
         }
 
         match value.as_str() {
@@ -65,6 +75,7 @@ impl TryInto<ValType> for Type {
             Self::Char => Ok(ValType::I32),
 
             Self::Array(_) => Ok(ValType::I32),
+            Self::Ref(_) => Ok(ValType::I32),
 
             // TODO: is this ok ?
             Self::Custom(_) => Ok(ValType::I32),

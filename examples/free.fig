@@ -20,15 +20,6 @@ fn len(str_ptr: i32): i32 {
 fn drop(ptr: i32) {
     let i: i32 = 0;
     let length: i32 = len(ptr);
-
-    loop {
-        if (i == length) { break; };
-
-        ptr[i] = 0;
-
-        i = i + 1;
-    }
-
     free(length);
 }
 

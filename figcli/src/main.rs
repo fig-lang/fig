@@ -62,7 +62,10 @@ struct CompileArgs {
 
 /// Expects SourceCode returns Wasm binary
 fn fig_compile_to_wasm(source: String, memory_offset: i32) -> (Vec<u8>, i32) {
+    info!("Starting to compile ...");
+    info!("Lexing source ...");
     let mut lexer = Lexer::new(source);
+    info!("Parsing tokens ...");
     let mut parser = FigParser::new(&mut lexer);
     let program = Program::parse(&mut parser, None);
 

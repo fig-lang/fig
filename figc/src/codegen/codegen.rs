@@ -563,18 +563,17 @@ impl IndexExpr {
             )));
         }
 
-        // Is this good solution ?
+        // Is this good solution ? //FIX
         result.push(Instruction::LocalGet(variable.index));
-        result.push(Instruction::I32Load(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
-        result.push(Instruction::I32Load(MemArg {
-            offset: 0,
-            align: 0,
-            memory_index: 0,
-        }));
+
+        if variable.derefable {
+            result.push(Instruction::I32Load(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }));
+        }
+
         result.extend(self.index.generate_instructions(ctx)?);
         result.push(Instruction::I32Add);
 
@@ -620,7 +619,16 @@ impl<'a> Instructions<'a> for SetStatement {
                     )));
                 };
 
+                result.push(Instruction::LocalGet(local.index));
                 result.extend(expression);
+
+                result.push(Instruction::I32Store(MemArg {
+                    offset: 0,
+                    align: 0,
+                    memory_index: 0,
+                }));
+
+                result.push(Instruction::LocalGet(local.index));
 
                 result.push(Instruction::LocalSet(local.index));
             }
@@ -788,19 +796,20 @@ impl<'a> Instructions<'a> for Expression {
 impl<'a> Instructions<'a> for Identifier {
     fn generate_instructions(&self, ctx: &'a mut Context) -> CResult<Vec<Instruction>> {
         let local = ctx.local_ctx.get_local_index(&self.value);
-
         match local {
             Some(local) => {
-                //ctx.type_ctx
-                //    .set_active_type(ctx.local_ctx.get_local_type(&self.value).unwrap().clone());
-                Ok(vec![
-                    Instruction::LocalGet(local.index),
-                    Instruction::I32Load(MemArg {
-                        offset: 0,
-                        align: 0,
-                        memory_index: 0,
-                    }),
-                ])
+                if local.derefable {
+                    return Ok(vec![
+                        Instruction::LocalGet(local.index),
+                        Instruction::I32Load(MemArg {
+                            offset: 0,
+                            align: 0,
+                            memory_index: 0,
+                        }),
+                    ]);
+                } else {
+                    return Ok(vec![Instruction::LocalGet(local.index)]);
+                }
             }
 
             None => match ctx.global_ctx.get_global(&self.value) {
@@ -847,7 +856,7 @@ impl<'a> Instructions<'a> for LetStatement {
 
         let local_index = ctx
             .local_ctx
-            .new_local(self.name.value.clone(), let_type.clone());
+            .new_local(self.name.value.clone(), let_type.clone(), true);
 
         ctx.local_ctx.set_active_local(local_index);
 
@@ -1180,7 +1189,7 @@ impl<'a> Instructions<'a> for Statement {
 
                 for (name, ty) in &func.meta.params {
                     ctx.local_ctx
-                        .new_local(name.value.to_owned(), ty.to_owned());
+                        .new_local(name.value.to_owned(), ty.to_owned(), false);
                 }
 
                 ctx.function_ctx.new_function(
@@ -1550,6 +1559,7 @@ impl CodeContext {
 }
 
 pub struct Local {
+    pub(super) derefable: bool,
     pub(super) index: u32,
 }
 
@@ -1635,13 +1645,14 @@ impl LocalContext {
     ///
     /// and returns the index
     /// if its exists will overwrite it
-    pub fn new_local(&mut self, name: String, ty: Type) -> u32 {
+    pub fn new_local(&mut self, name: String, ty: Type, derefable: bool) -> u32 {
         let index = self.locals_index;
 
         self.locals.insert(
             name.clone(),
             Local {
                 index: self.locals_index.clone(),
+                derefable,
             },
         );
         self.locals_type.insert(name, ty);

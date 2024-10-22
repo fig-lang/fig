@@ -1,11 +1,10 @@
-external console {
-    fn log_str(n: i32);
-    fn log(n: i32);
+external fig {
+    fn print(str: string);
 }
 
 builtin fn malloc(size: i32): i32;
 
-fn len(str_ptr: i32): i32 {
+fn len(str_ptr: i32[]): i32 {
     let length: i32 = 0;
 
     loop {
@@ -17,10 +16,10 @@ fn len(str_ptr: i32): i32 {
     return length;
 }
 
-fn copy_str(str: i32): i32 {
+fn copy_str(str: i32[]): string {
     let i: i32 = 0;
     let length: i32 = len(str);
-    let new_str: i32 = malloc(length + 1);
+    let new_str: i32[] = malloc(length + 1);
 
     loop {
         if (i == length) { break; };
@@ -34,11 +33,11 @@ fn copy_str(str: i32): i32 {
 }
 
 export fn main() {
-    let string: i32 = "Hello World";
-    let string_new: i32 = copy_str(string);
+    let string: string = "Hello World";
+    let string_new: string = copy_str(string);
 
-    log(string);
-    log(string_new);
+    print(string);
+    print(string_new);
 
     return 0;
 }

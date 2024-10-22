@@ -1,0 +1,20 @@
+import std;
+
+// return's index to the 'v' if found
+fn binary_search(n: i32[], v: i32): i32 {
+    let first = 0;
+    let last: f32 = len(n) - 1;
+    let mid = 0;
+
+    loop {
+        if (first > last) {
+            break;
+        }
+    }
+
+    return -1;
+}
+
+export fn main (){
+    
+}

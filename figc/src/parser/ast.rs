@@ -29,6 +29,14 @@ impl<'a> Parse<'a> for Type {
         // skip ':' char
         parser.next_token();
 
+        let mut res = String::new();
+
+        if parser.current_token_is(Token::Ref) {
+            parser.next_token();
+
+            res.push('&');
+        }
+
         let type_ident = Identifier::parse(parser, precedence)?;
 
         let type_ident = if parser.next_token_is(Token::LBrack) {
@@ -45,7 +53,11 @@ impl<'a> Parse<'a> for Type {
             type_ident.value
         };
 
-        let type_value = Type::from(type_ident.clone());
+        res.push_str(type_ident.as_str());
+
+        let type_value = Type::from(res);
+
+        println!("Type parsed, value: {:?}", type_value);
 
         Ok(type_value)
     }

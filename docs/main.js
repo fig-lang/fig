@@ -241,7 +241,8 @@ class Reader {
 const DOM = {
     compile_btn: document.getElementById("compile-btn"),
     editor: document.getElementById("editor"),
-    console: document.getElementById("console")
+    console: document.getElementById("console"),
+    mem_view: document.getElementById("mem_view")
 };
 
 /**
@@ -353,6 +354,12 @@ function string_from_chars(chars) {
 
                 reader.set_mem(new DataView(wasm.exports.memory.buffer));
 
+                const view = new Int8Array(wasm.exports.memory.buffer);
+                for (let i = 0; view[i] !== 0; i++) {
+
+                    //TODO
+
+                }
                 wasm.exports.main();
             } catch (error) {
                 push_to_console(error);
